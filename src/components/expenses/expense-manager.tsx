@@ -4,6 +4,21 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Category, CreditCard, Expense } from "@/types/finance";
 
+const defaultCategoryNames = [
+  "Comida",
+  "Supermercado",
+  "Transporte",
+  "Gasolina",
+  "Casa",
+  "Servicios",
+  "Salud",
+  "Entretenimiento",
+  "Viajes",
+  "Compras",
+  "Suscripciones",
+  "Otros",
+];
+
 const emptyForm = {
   credit_card_id: "",
   category_id: "",
@@ -15,13 +30,18 @@ const emptyForm = {
   installment_months: "",
 };
 
+type Message = {
+  type: "success" | "error" | "info";
+  text: string;
+};
+
 export function ExpenseManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -30,22 +50,23 @@ export function ExpenseManager() {
 
   async function loadData() {
     if (!supabase) {
-      setMessage("Configura Supabase en .env.local para registrar gastos.");
+      setMessage({ type: "error", text: "Falta configurar Supabase para registrar gastos." });
       setIsLoading(false);
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage("Inicia sesion para registrar gastos.");
+      setMessage({ type: "info", text: "Inicia sesion para registrar gastos." });
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
+    const loadedCategories = await ensureDefaultCategories(userData.user.id);
+
     const [
       { data: cardData, error: cardError },
-      { data: categoryData, error: categoryError },
       { data: expenseData, error: expenseError },
     ] = await Promise.all([
       supabase
@@ -55,12 +76,6 @@ export function ExpenseManager() {
         .eq("is_active", true)
         .order("name"),
       supabase
-        .from("categories")
-        .select("*")
-        .eq("user_id", userData.user.id)
-        .eq("type", "expense")
-        .order("name"),
-      supabase
         .from("expenses")
         .select("*")
         .eq("user_id", userData.user.id)
@@ -68,45 +83,96 @@ export function ExpenseManager() {
         .limit(20),
     ]);
 
-    if (cardError || categoryError || expenseError) {
-      setMessage(
-        cardError?.message ??
-          categoryError?.message ??
-          expenseError?.message ??
-          "No se pudieron cargar los datos."
-      );
+    if (cardError || expenseError) {
+      setMessage({
+        type: "error",
+        text: cardError?.message ?? expenseError?.message ?? "No se pudieron cargar tus gastos.",
+      });
       setIsLoading(false);
       return;
     }
 
     setCards((cardData ?? []) as CreditCard[]);
-    setCategories((categoryData ?? []) as Category[]);
+    setCategories(loadedCategories);
     setExpenses((expenseData ?? []) as Expense[]);
     setIsLoading(false);
   }
 
+  async function ensureDefaultCategories(userId: string) {
+    if (!supabase) return [];
+
+    const { data, error } = await supabase
+      .from("categories")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("type", "expense")
+      .order("name");
+
+    if (error) {
+      setMessage({ type: "error", text: `No se pudieron cargar las categorias. Detalle: ${error.message}` });
+      return [];
+    }
+
+    const existingCategories = (data ?? []) as Category[];
+    const existingNames = new Set(existingCategories.map((category) => category.name.toLowerCase()));
+    const missingNames = defaultCategoryNames.filter((name) => !existingNames.has(name.toLowerCase()));
+
+    if (missingNames.length > 0) {
+      const { error: insertError } = await supabase.from("categories").insert(
+        missingNames.map((name) => ({
+          user_id: userId,
+          name,
+          type: "expense",
+          color: null,
+        }))
+      );
+
+      if (insertError) {
+        setMessage({ type: "error", text: `No se pudieron crear las categorias iniciales. Detalle: ${insertError.message}` });
+        return existingCategories;
+      }
+
+      const { data: refreshedCategories } = await supabase
+        .from("categories")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("type", "expense")
+        .order("name");
+
+      return (refreshedCategories ?? []) as Category[];
+    }
+
+    return existingCategories;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("");
+    setMessage(null);
 
     if (!supabase) {
-      setMessage("Configura Supabase en .env.local antes de registrar gastos.");
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de registrar gastos." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage("Primero inicia sesion.");
+      setMessage({ type: "error", text: "Primero inicia sesion para registrar gastos." });
+      return;
+    }
+
+    const validationError = validateExpenseForm(form);
+    if (validationError) {
+      setMessage({ type: "error", text: validationError });
       return;
     }
 
     const payload = {
       user_id: userData.user.id,
       credit_card_id: form.credit_card_id,
-      category_id: form.category_id || null,
+      category_id: form.category_id,
       expense_date: form.expense_date,
       amount: Number(form.amount),
-      description: form.description,
+      description: form.description.trim(),
       expense_type: form.expense_type,
       is_installment_purchase: form.is_installment_purchase,
       installment_months: form.is_installment_purchase ? Number(form.installment_months) : null,
@@ -114,13 +180,21 @@ export function ExpenseManager() {
 
     const { error } = await supabase.from("expenses").insert(payload);
     if (error) {
-      setMessage(error.message);
+      setMessage({ type: "error", text: getFriendlyExpenseError(error.message) });
       return;
     }
 
-    setForm({ ...emptyForm, credit_card_id: form.credit_card_id });
-    setMessage("Gasto registrado.");
+    setForm({ ...emptyForm, credit_card_id: form.credit_card_id, category_id: form.category_id });
+    setMessage({ type: "success", text: "Gasto registrado correctamente." });
     await loadData();
+  }
+
+  function getCardName(cardId: string) {
+    return cards.find((card) => card.id === cardId)?.name ?? "Tarjeta no encontrada";
+  }
+
+  function getCategoryName(categoryId: string | null) {
+    return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
   }
 
   return (
@@ -160,7 +234,7 @@ export function ExpenseManager() {
             <span className="text-sm font-medium text-slate-700">Monto</span>
             <input
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              min="0"
+              min="0.01"
               onChange={(event) => setForm({ ...form, amount: event.target.value })}
               required
               step="0.01"
@@ -174,9 +248,10 @@ export function ExpenseManager() {
             <select
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => setForm({ ...form, category_id: event.target.value })}
+              required
               value={form.category_id}
             >
-              <option value="">Sin categoria</option>
+              <option value="">Selecciona una categoria</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -186,11 +261,11 @@ export function ExpenseManager() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Descripcion</span>
+            <span className="text-sm font-medium text-slate-700">Descripcion opcional</span>
             <input
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => setForm({ ...form, description: event.target.value })}
-              required
+              placeholder="Ejemplo: cafe, gasolina, farmacia"
               value={form.description}
             />
           </label>
@@ -234,26 +309,39 @@ export function ExpenseManager() {
         <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
           Registrar gasto
         </button>
-        {message ? <p className="mt-4 text-sm text-slate-600">{message}</p> : null}
+        {message ? <StatusMessage message={message} /> : null}
       </form>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Gastos recientes</h2>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
-        <div className="mt-4 divide-y divide-slate-100">
-          {expenses.map((expense) => (
-            <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between" key={expense.id}>
-              <div>
-                <p className="font-medium text-slate-900">{expense.description}</p>
-                <p className="text-sm text-slate-500">
-                  {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")} - {getCardName(expense.credit_card_id)}
-                </p>
-              </div>
-              <p className="font-semibold text-slate-950">
-                {Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}
-              </p>
-            </div>
-          ))}
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500">
+                <th className="py-2 pr-4 font-medium">Fecha</th>
+                <th className="py-2 pr-4 font-medium">Tarjeta</th>
+                <th className="py-2 pr-4 font-medium">Categoria</th>
+                <th className="py-2 pr-4 font-medium">Descripcion</th>
+                <th className="py-2 text-right font-medium">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {expenses.map((expense) => (
+                <tr className="border-b border-slate-100" key={expense.id}>
+                  <td className="py-3 pr-4 text-slate-700">
+                    {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">{getCardName(expense.credit_card_id)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{getCategoryName(expense.category_id)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950">
+                    {Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         {!isLoading && expenses.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
@@ -263,8 +351,31 @@ export function ExpenseManager() {
       </div>
     </div>
   );
+}
 
-  function getCardName(cardId: string) {
-    return cards.find((card) => card.id === cardId)?.name ?? "Tarjeta no encontrada";
+function validateExpenseForm(form: typeof emptyForm) {
+  if (!form.credit_card_id) return "Selecciona una tarjeta.";
+  if (!form.expense_date) return "Selecciona la fecha del gasto.";
+  if (Number(form.amount) <= 0) return "El monto debe ser mayor a 0.";
+  if (!form.category_id) return "Selecciona una categoria.";
+  if (form.is_installment_purchase && Number(form.installment_months) <= 0) {
+    return "Indica el numero de meses de la compra.";
   }
+  return "";
+}
+
+function getFriendlyExpenseError(error: string) {
+  if (error.includes("credit_card_id")) return "Selecciona una tarjeta valida.";
+  if (error.includes("category_id")) return "Selecciona una categoria valida.";
+  return `No se pudo registrar el gasto. Detalle: ${error}`;
+}
+
+function StatusMessage({ message }: { message: Message }) {
+  const styles = {
+    success: "border-green-200 bg-green-50 text-green-800",
+    error: "border-red-200 bg-red-50 text-red-800",
+    info: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+
+  return <p className={`mt-4 rounded-md border px-3 py-2 text-sm ${styles[message.type]}`}>{message.text}</p>;
 }
