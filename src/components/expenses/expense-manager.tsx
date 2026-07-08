@@ -93,7 +93,7 @@ export function ExpenseManager() {
     }
 
     setCards((cardData ?? []) as CreditCard[]);
-    setCategories(loadedCategories);
+    setCategories(dedupeCategories(loadedCategories));
     setExpenses((expenseData ?? []) as Expense[]);
     setIsLoading(false);
   }
@@ -113,7 +113,7 @@ export function ExpenseManager() {
       return [];
     }
 
-    const existingCategories = (data ?? []) as Category[];
+    const existingCategories = dedupeCategories((data ?? []) as Category[]);
     const existingNames = new Set(existingCategories.map((category) => category.name.toLowerCase()));
     const missingNames = defaultCategoryNames.filter((name) => !existingNames.has(name.toLowerCase()));
 
@@ -139,7 +139,7 @@ export function ExpenseManager() {
         .eq("type", "expense")
         .order("name");
 
-      return (refreshedCategories ?? []) as Category[];
+      return dedupeCategories((refreshedCategories ?? []) as Category[]);
     }
 
     return existingCategories;
@@ -362,6 +362,20 @@ function validateExpenseForm(form: typeof emptyForm) {
     return "Indica el numero de meses de la compra.";
   }
   return "";
+}
+
+function dedupeCategories(categories: Category[]) {
+  const seen = new Set<string>();
+
+  return categories.filter((category) => {
+    const key = `${category.user_id}:${category.type}:${category.name.trim().toLowerCase()}`;
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 function getFriendlyExpenseError(error: string) {
