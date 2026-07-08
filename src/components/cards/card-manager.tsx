@@ -24,6 +24,7 @@ export function CardManager() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -32,22 +33,36 @@ export function CardManager() {
   async function loadData() {
     if (!supabase) {
       setMessage("Configura Supabase en .env.local para guardar tarjetas.");
+      setIsLoading(false);
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       setMessage("Inicia sesion para ver tus tarjetas.");
+      setIsLoading(false);
       return;
     }
 
-    const [{ data: cardData }, { data: expenseData }] = await Promise.all([
-      supabase.from("credit_cards").select("*").order("created_at", { ascending: false }),
-      supabase.from("expenses").select("*"),
+    setIsLoading(true);
+    const [{ data: cardData, error: cardError }, { data: expenseData, error: expenseError }] = await Promise.all([
+      supabase
+        .from("credit_cards")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false }),
+      supabase.from("expenses").select("*").eq("user_id", userData.user.id),
     ]);
+
+    if (cardError || expenseError) {
+      setMessage(cardError?.message ?? expenseError?.message ?? "No se pudieron cargar los datos.");
+      setIsLoading(false);
+      return;
+    }
 
     setCards((cardData ?? []) as CreditCard[]);
     setExpenses((expenseData ?? []) as Expense[]);
+    setIsLoading(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -79,7 +94,11 @@ export function CardManager() {
     };
 
     const request = editingId
-      ? supabase.from("credit_cards").update(payload).eq("id", editingId)
+      ? supabase
+          .from("credit_cards")
+          .update(payload)
+          .eq("id", editingId)
+          .eq("user_id", userData.user.id)
       : supabase.from("credit_cards").insert(payload);
 
     const { error } = await request;
@@ -115,7 +134,17 @@ export function CardManager() {
       return;
     }
 
-    const { error } = await supabase.from("credit_cards").delete().eq("id", id);
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage("Primero inicia sesion.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("credit_cards")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userData.user.id);
     setMessage(error ? error.message : "Tarjeta borrada.");
     await loadData();
   }
@@ -178,6 +207,12 @@ export function CardManager() {
       </form>
 
       <div className="space-y-4">
+        {isLoading ? (
+          <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">
+            Cargando tarjetas...
+          </div>
+        ) : null}
+
         {cards.map((card) => {
           const period = getCurrentCardPeriod(card.statement_cut_day);
           const total = getCurrentPeriodTotal(card);
@@ -191,7 +226,7 @@ export function CardManager() {
                     <h3 className="text-lg font-semibold text-slate-950">{card.name}</h3>
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
-                    {card.bank} · **** {card.last_four_digits} · {card.currency}
+                    {card.bank} - **** {card.last_four_digits} - {card.currency}
                   </p>
                   <p className="mt-2 text-sm text-slate-600">
                     Corte: dia {card.statement_cut_day}. Pago: dia {card.payment_due_day}.
@@ -222,7 +257,7 @@ export function CardManager() {
           );
         })}
 
-        {cards.length === 0 ? (
+        {!isLoading && cards.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
             Todavia no hay tarjetas. Crea la primera desde el formulario.
           </div>

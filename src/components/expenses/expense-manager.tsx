@@ -22,6 +22,7 @@ export function ExpenseManager() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadData();
@@ -30,24 +31,58 @@ export function ExpenseManager() {
   async function loadData() {
     if (!supabase) {
       setMessage("Configura Supabase en .env.local para registrar gastos.");
+      setIsLoading(false);
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       setMessage("Inicia sesion para registrar gastos.");
+      setIsLoading(false);
       return;
     }
 
-    const [{ data: cardData }, { data: categoryData }, { data: expenseData }] = await Promise.all([
-      supabase.from("credit_cards").select("*").eq("is_active", true).order("name"),
-      supabase.from("categories").select("*").eq("type", "expense").order("name"),
-      supabase.from("expenses").select("*").order("expense_date", { ascending: false }),
+    setIsLoading(true);
+    const [
+      { data: cardData, error: cardError },
+      { data: categoryData, error: categoryError },
+      { data: expenseData, error: expenseError },
+    ] = await Promise.all([
+      supabase
+        .from("credit_cards")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .eq("is_active", true)
+        .order("name"),
+      supabase
+        .from("categories")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .eq("type", "expense")
+        .order("name"),
+      supabase
+        .from("expenses")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("expense_date", { ascending: false })
+        .limit(20),
     ]);
+
+    if (cardError || categoryError || expenseError) {
+      setMessage(
+        cardError?.message ??
+          categoryError?.message ??
+          expenseError?.message ??
+          "No se pudieron cargar los datos."
+      );
+      setIsLoading(false);
+      return;
+    }
 
     setCards((cardData ?? []) as CreditCard[]);
     setCategories((categoryData ?? []) as Category[]);
     setExpenses((expenseData ?? []) as Expense[]);
+    setIsLoading(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -204,12 +239,15 @@ export function ExpenseManager() {
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Gastos recientes</h2>
+        {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
         <div className="mt-4 divide-y divide-slate-100">
           {expenses.map((expense) => (
             <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between" key={expense.id}>
               <div>
                 <p className="font-medium text-slate-900">{expense.description}</p>
-                <p className="text-sm text-slate-500">{new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")}</p>
+                <p className="text-sm text-slate-500">
+                  {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")} - {getCardName(expense.credit_card_id)}
+                </p>
               </div>
               <p className="font-semibold text-slate-950">
                 {Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}
@@ -217,7 +255,7 @@ export function ExpenseManager() {
             </div>
           ))}
         </div>
-        {expenses.length === 0 ? (
+        {!isLoading && expenses.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
             Todavia no hay gastos registrados.
           </p>
@@ -225,4 +263,8 @@ export function ExpenseManager() {
       </div>
     </div>
   );
+
+  function getCardName(cardId: string) {
+    return cards.find((card) => card.id === cardId)?.name ?? "Tarjeta no encontrada";
+  }
 }

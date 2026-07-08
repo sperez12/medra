@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function LoginForm() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -20,10 +22,11 @@ export function LoginForm() {
       return;
     }
 
+    const nextPath = searchParams.get("next") ?? "/";
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}${nextPath}`,
       },
     });
 

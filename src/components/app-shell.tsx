@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { AuthButton } from "@/components/auth/auth-button";
+import { AuthGuard } from "@/components/auth/auth-guard";
 import { SiteNavigation } from "@/components/site-navigation";
 
 type AppShellProps = {
   children: React.ReactNode;
+  requireAuth?: boolean;
 };
 
-export function AppShell({ children }: AppShellProps) {
+export function AppShell({ children, requireAuth = true }: AppShellProps) {
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-200 bg-white">
@@ -14,17 +17,14 @@ export function AppShell({ children }: AppShellProps) {
             <Link href="/" className="text-2xl font-bold tracking-tight text-slate-950">
               Patrimonio Personal
             </Link>
-            <Link
-              href="/login"
-              className="w-fit rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-            >
-              Iniciar sesion
-            </Link>
+            <AuthButton />
           </div>
           <SiteNavigation />
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-4 py-8">
+        {requireAuth ? <AuthGuard>{children}</AuthGuard> : children}
+      </main>
     </div>
   );
 }
