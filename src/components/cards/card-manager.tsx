@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -18,7 +19,7 @@ const emptyForm = {
   credit_limit: "0",
   statement_cut_day: "10",
   payment_due_day: "25",
-  currency: "MXN",
+  currency: DEFAULT_CURRENCY,
   color: "#0d9488",
   is_active: true,
 };
@@ -121,7 +122,7 @@ export function CardManager() {
       credit_limit: Number(form.credit_limit),
       statement_cut_day: Number(form.statement_cut_day),
       payment_due_day: Number(form.payment_due_day),
-      currency: form.currency.trim().toUpperCase(),
+      currency: normalizeCurrency(form.currency),
       color: form.color || null,
       is_active: form.is_active,
     };
@@ -245,7 +246,18 @@ export function CardManager() {
           <TextInput label="Limite de credito" min="0.01" step="0.01" type="number" value={form.credit_limit} onChange={(value) => setForm({ ...form, credit_limit: value })} />
           <TextInput label="Dia de corte" max="31" min="1" type="number" value={form.statement_cut_day} onChange={(value) => setForm({ ...form, statement_cut_day: value })} />
           <TextInput label="Dia limite de pago" max="31" min="1" type="number" value={form.payment_due_day} onChange={(value) => setForm({ ...form, payment_due_day: value })} />
-          <TextInput label="Moneda" value={form.currency} onChange={(value) => setForm({ ...form, currency: value.toUpperCase() })} />
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Moneda</span>
+            <select
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+              onChange={(event) => setForm({ ...form, currency: event.target.value })}
+              value={form.currency}
+            >
+              {SUPPORTED_CURRENCIES.map((currency) => (
+                <option key={currency.code} value={currency.code}>{currency.label}</option>
+              ))}
+            </select>
+          </label>
           <TextInput label="Color opcional" type="color" value={form.color} onChange={(value) => setForm({ ...form, color: value })} />
           <label className="flex items-center gap-2 text-sm text-slate-700">
             <input
@@ -312,17 +324,17 @@ export function CardManager() {
                       {card.bank} - **** {card.last_four_digits}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Limite: {formatMoney(limit, card.currency)}
+                      Limite: {formatCurrency(limit, card.currency)}
                     </p>
                   </div>
                   <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Metric label="Gasto del periodo" value={formatMoney(total, card.currency)} />
-                  <Metric label="Pagos del periodo" value={formatMoney(paid, card.currency)} />
-                  <Metric label="Saldo pendiente estimado" value={formatMoney(pending, card.currency)} strong />
-                  <Metric label="Disponible estimado" value={formatMoney(available, card.currency)} />
+                  <Metric label="Gasto del periodo" value={formatCurrency(total, card.currency)} />
+                  <Metric label="Pagos del periodo" value={formatCurrency(paid, card.currency)} />
+                  <Metric label="Saldo pendiente estimado" value={formatCurrency(pending, card.currency)} strong />
+                  <Metric label="Disponible estimado" value={formatCurrency(available, card.currency)} />
                 </div>
 
                 <div>
@@ -422,7 +434,7 @@ function validateCardForm(form: typeof emptyForm) {
   if (Number(form.credit_limit) <= 0) return "El limite de credito debe ser mayor a 0.";
   if (!isDayBetween1And31(form.statement_cut_day)) return "El dia de corte debe estar entre 1 y 31.";
   if (!isDayBetween1And31(form.payment_due_day)) return "El dia limite de pago debe estar entre 1 y 31.";
-  if (!form.currency.trim()) return "Escribe la moneda, por ejemplo MXN.";
+  if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   return "";
 }
 
@@ -446,14 +458,6 @@ function getDaysUntilDay(day: number) {
 
 function daysInMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-}
-
-function formatMoney(amount: number, currency: string) {
-  try {
-    return amount.toLocaleString("es-MX", { style: "currency", currency });
-  } catch {
-    return `${amount.toFixed(2)} ${currency}`;
-  }
 }
 
 function getUsageStatus(percent: number) {

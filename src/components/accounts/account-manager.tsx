@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import type { Account, AccountMovement, AccountMovementType, AccountType } from "@/types/finance";
 
 const accountTypeLabels: Record<AccountType, string> = {
@@ -23,7 +24,7 @@ const emptyAccountForm = {
   name: "",
   institution: "",
   account_type: "bank" as AccountType,
-  currency: "MXN" as "MXN" | "USD",
+  currency: DEFAULT_CURRENCY,
   initial_balance: "0",
   description: "",
   is_active: true,
@@ -125,7 +126,7 @@ export function AccountManager() {
       name: accountForm.name.trim(),
       institution: accountForm.institution.trim() || null,
       account_type: accountForm.account_type,
-      currency: accountForm.currency,
+      currency: normalizeCurrency(accountForm.currency),
       initial_balance: Number(accountForm.initial_balance),
       description: accountForm.description.trim() || null,
       is_active: accountForm.is_active,
@@ -200,7 +201,7 @@ export function AccountManager() {
       name: account.name,
       institution: account.institution ?? "",
       account_type: account.account_type,
-      currency: account.currency,
+      currency: normalizeCurrency(account.currency),
       initial_balance: String(account.initial_balance),
       description: account.description ?? "",
       is_active: account.is_active,
@@ -264,12 +265,11 @@ export function AccountManager() {
     movementCount: movements.filter((movement) => movement.account_id === account.id).length,
   }));
   const activeAccounts = accountSummaries.filter(({ account }) => account.is_active);
-  const totalMxn = activeAccounts
-    .filter(({ account }) => account.currency === "MXN")
-    .reduce((total, item) => total + item.balance, 0);
-  const totalUsd = activeAccounts
-    .filter(({ account }) => account.currency === "USD")
-    .reduce((total, item) => total + item.balance, 0);
+  const totalsByCurrency = groupMoneyByCurrency(
+    activeAccounts,
+    (item) => item.balance,
+    (item) => item.account.currency
+  );
   const recentMovements = movements.slice(0, 8);
 
   return (
@@ -282,8 +282,7 @@ export function AccountManager() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <SummaryCard label="Total en MXN" value={formatMoney(totalMxn, "MXN")} />
-        <SummaryCard label="Total en USD" value={formatMoney(totalUsd, "USD")} />
+        <SummaryCard label="Totales por moneda" value={<MoneyTotals totals={totalsByCurrency} />} />
         <SummaryCard label="Cuentas activas" value={String(activeAccounts.length)} />
       </section>
 
@@ -313,7 +312,7 @@ export function AccountManager() {
                   <StatusPill active={account.is_active} />
                 </div>
                 <p className="mt-4 text-sm text-slate-500">Saldo actual estimado</p>
-                <p className="text-2xl font-bold text-slate-950">{formatMoney(balance, account.currency)}</p>
+                <p className="text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
                 <p className="mt-1 text-xs text-slate-500">{movementCount} movimiento(s)</p>
                 {account.description ? <p className="mt-3 text-sm text-slate-600">{account.description}</p> : null}
                 <div className="mt-4 flex gap-2">
@@ -377,9 +376,10 @@ function AccountForm({
         </label>
         <label className="block">
           <span className="text-sm font-medium text-slate-700">Moneda</span>
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, currency: event.target.value as "MXN" | "USD" })} value={form.currency}>
-            <option value="MXN">MXN</option>
-            <option value="USD">USD</option>
+          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, currency: event.target.value })} value={form.currency}>
+            {SUPPORTED_CURRENCIES.map((currency) => (
+              <option key={currency.code} value={currency.code}>{currency.label}</option>
+            ))}
           </select>
         </label>
         <TextInput label="Saldo inicial" min="0" step="0.01" type="number" value={form.initial_balance} onChange={(value) => onChange({ ...form, initial_balance: value })} />
@@ -468,7 +468,7 @@ function RecentMovements({ accounts, movements }: { accounts: Account[]; movemen
                   <td className="py-3 pr-4 text-slate-700">{account?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{movementTypeLabels[movement.movement_type]}</td>
                   <td className="py-3 pr-4 text-slate-700">{movement.description || "Sin descripción"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatMoney(Number(movement.amount), account?.currency ?? "MXN")}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(movement.amount), account?.currency)}</td>
                 </tr>
               );
             })}
@@ -493,6 +493,7 @@ function calculateAccountBalance(account: Account, movements: AccountMovement[])
 
 function validateAccountForm(form: typeof emptyAccountForm) {
   if (!form.name.trim()) return "Escribe el nombre de la cuenta.";
+  if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   if (Number(form.initial_balance) < 0) return "El saldo inicial no puede ser negativo.";
   return "";
 }
@@ -511,8 +512,16 @@ function getFriendlyAccountError(error: string) {
   return `No se pudo completar la acción. Detalle: ${error}`;
 }
 
-function formatMoney(amount: number, currency: string) {
-  return amount.toLocaleString("es-MX", { style: "currency", currency });
+function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
+  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+
+  return (
+    <span className="space-y-1">
+      {totals.map((total) => (
+        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+      ))}
+    </span>
+  );
 }
 
 function TextInput({
@@ -540,7 +549,7 @@ function TextInput({
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>

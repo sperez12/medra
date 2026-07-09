@@ -8,6 +8,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
+import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Account, CreditCard, Payment, PaymentType } from "@/types/finance";
 
@@ -189,7 +190,7 @@ export function PaymentManager() {
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatMoney(Number(payment.amount))}\n\nSi el pago creó un movimiento en una cuenta, ese movimiento también se borrará.\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
+      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatCurrency(Number(payment.amount), getCardCurrency(payment.credit_card_id))}\n\nSi el pago creó un movimiento en una cuenta, ese movimiento también se borrará.\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
     );
 
     if (!confirmed) {
@@ -283,6 +284,10 @@ export function PaymentManager() {
 
   function getAccountName(accountId: string | null) {
     return accounts.find((account) => account.id === accountId)?.name ?? "Sin cuenta";
+  }
+
+  function getCardCurrency(cardId: string | null) {
+    return cards.find((card) => card.id === cardId)?.currency ?? DEFAULT_CURRENCY;
   }
 
   const filteredPayments = payments.filter((payment) =>
@@ -433,7 +438,7 @@ export function PaymentManager() {
                   <td className="py-3 pr-4 text-slate-700">{getAccountName(payment.account_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                   <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripción"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatMoney(Number(payment.amount))}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(payment.amount), getCardCurrency(payment.credit_card_id))}</td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">
                       <button
@@ -474,10 +479,6 @@ function validatePaymentForm(form: typeof emptyForm) {
   if (Number(form.amount) <= 0) return "El monto debe ser mayor a 0.";
   if (!form.payment_type) return "Selecciona el tipo de pago.";
   return "";
-}
-
-function formatMoney(amount: number) {
-  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
 function getFriendlyPaymentError(error: string) {

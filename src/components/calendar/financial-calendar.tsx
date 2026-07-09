@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
@@ -22,6 +23,7 @@ type CalendarEvent = {
   cardDetail: string;
   description: string;
   amount?: number;
+  currency?: string;
 };
 
 type Message = {
@@ -185,6 +187,7 @@ function buildCalendarEvents(cards: CreditCard[], payments: Payment[], expenses:
       cardDetail: card ? `${card.bank} - **** ${card.last_four_digits}` : "Sin tarjeta",
       description: payment.notes || paymentTypeLabels[payment.payment_type],
       amount: Number(payment.amount),
+      currency: card?.currency ?? DEFAULT_CURRENCY,
     };
   });
 
@@ -201,6 +204,7 @@ function buildCalendarEvents(cards: CreditCard[], payments: Payment[], expenses:
         cardDetail: card ? `${card.bank} - **** ${card.last_four_digits}` : "Sin tarjeta",
         description: expense.description || "Gasto importante",
         amount: Number(expense.amount),
+        currency: card?.currency ?? DEFAULT_CURRENCY,
       };
     });
 
@@ -249,10 +253,6 @@ function startOfDay(date: Date) {
 
 function daysInMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-}
-
-function formatMoney(amount: number) {
-  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
 function SummaryCard({
@@ -330,7 +330,7 @@ function EventItem({ event }: { event: CalendarEvent }) {
         </div>
         <div className="text-left sm:text-right">
           <p className="font-semibold text-slate-950">{event.date.toLocaleDateString("es-MX")}</p>
-          {event.amount ? <p className="mt-1 text-sm text-slate-600">{formatMoney(event.amount)}</p> : null}
+          {event.amount ? <p className="mt-1 text-sm text-slate-600">{formatCurrency(event.amount, event.currency)}</p> : null}
         </div>
       </div>
     </article>

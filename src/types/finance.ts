@@ -1,3 +1,5 @@
+import type { CurrencyCode } from "@/lib/currencies";
+
 export type CreditCard = {
   id: string;
   user_id: string;
@@ -57,7 +59,7 @@ export type Account = {
   name: string;
   institution: string | null;
   account_type: AccountType;
-  currency: "MXN" | "USD";
+  currency: CurrencyCode | string;
   initial_balance: number;
   description: string | null;
   is_active: boolean;

@@ -5,28 +5,28 @@ export default function SettingsPage() {
     <AppShell>
       <div className="space-y-6">
         <section>
-          <h1 className="text-3xl font-bold text-slate-950">Configuración</h1>
+          <h1 className="text-3xl font-bold text-slate-950">Configuracion</h1>
           <p className="mt-2 text-slate-600">
-            Estado general de la app y próximos ajustes disponibles.
+            Estado general de la app y proximos ajustes disponibles.
           </p>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
           <InfoCard
-            title="Sesión y seguridad"
+            title="Sesion y seguridad"
             description="La app usa Supabase Auth. Tus datos se consultan con tu usuario autenticado."
           />
           <InfoCard
-            title="Moneda principal"
-            description="Los reportes usan MXN por defecto. Las tarjetas pueden mostrar otra moneda si la registras."
+            title="Monedas"
+            description="MXN sigue como moneda inicial, pero puedes registrar tarjetas y cuentas en varias monedas sin mezclarlas en los totales."
           />
           <InfoCard
-            title="Categorías"
-            description="Las categorías básicas de gastos se crean automáticamente para cada usuario."
+            title="Categorias"
+            description="Las categorias basicas de gastos se crean automaticamente para cada usuario."
           />
           <InfoCard
-            title="Configuración avanzada"
-            description="Perfil, preferencias y monedas se agregarán en una fase futura."
+            title="Configuracion avanzada"
+            description="Perfil, preferencias y tipo de cambio automatico se agregaran en una fase futura."
           />
         </section>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -29,6 +30,7 @@ type Message = {
 type ReportRow = {
   id: string;
   label: string;
+  currency: string;
   value: number;
 };
 
@@ -111,18 +113,22 @@ export function BasicReports() {
     })
   );
 
-  const expensesByCategory = groupExpensesByCategory(filteredExpenses, categories);
+  const expensesByCategory = groupExpensesByCategory(filteredExpenses, categories, cards);
   const expensesByCard = groupExpensesByCard(filteredExpenses, cards);
   const paymentsByCard = groupPaymentsByCard(filteredPayments, cards);
   const comparisonByCard = buildComparisonByCard(cards, filteredExpenses, filteredPayments);
   const highestExpenses = [...filteredExpenses].sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 8);
   const recentPayments = filteredPayments.slice(0, 8);
-  const totalSpent = filteredExpenses.reduce((total, expense) => total + Number(expense.amount), 0);
-  const totalPaid = filteredPayments.reduce((total, payment) => total + Number(payment.amount), 0);
-  const totalPending = Math.max(totalSpent - totalPaid, 0);
-  const topCategory = expensesByCategory[0]?.label ?? "Sin datos";
-  const topCard = expensesByCard[0]?.label ?? "Sin datos";
-  const dailyAverage = totalSpent / getPeriodDayCount(periodFilter, cards);
+  const totalSpentByCurrency = groupMoneyByCurrency(filteredExpenses, (expense) => Number(expense.amount), (expense) => getCardCurrency(cards, expense.credit_card_id));
+  const totalPaidByCurrency = groupMoneyByCurrency(filteredPayments, (payment) => Number(payment.amount), (payment) => getCardCurrency(cards, payment.credit_card_id));
+  const pendingByCurrency = buildPendingTotals(totalSpentByCurrency, totalPaidByCurrency);
+  const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
+  const topCard = expensesByCard[0] ? `${expensesByCard[0].label} (${expensesByCard[0].currency})` : "Sin datos";
+  const dayCount = getPeriodDayCount(periodFilter, cards);
+  const dailyAverageByCurrency = totalSpentByCurrency.map((total) => ({
+    currency: total.currency,
+    amount: total.amount / dayCount,
+  }));
 
   if (isLoading) {
     return <StatusPanel text="Cargando reportes..." />;
@@ -144,9 +150,9 @@ export function BasicReports() {
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard label="Total gastado" value={formatMoney(totalSpent)} />
-        <SummaryCard label="Total pagado" value={formatMoney(totalPaid)} />
-        <SummaryCard label="Pendiente estimado" value={formatMoney(totalPending)} strong />
+        <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
+        <SummaryCard label="Total pagado" value={<MoneyTotals totals={totalPaidByCurrency} />} />
+        <SummaryCard label="Pendiente estimado" value={<MoneyTotals totals={pendingByCurrency} />} strong />
         <SummaryCard label="Categoria principal" value={topCategory} />
         <SummaryCard label="Tarjeta principal" value={topCard} />
       </section>
@@ -164,7 +170,9 @@ export function BasicReports() {
       <section className="grid gap-4 lg:grid-cols-[320px_1fr]">
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm text-slate-500">Promedio de gasto por dia</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{formatMoney(dailyAverage)}</p>
+          <div className="mt-2 text-3xl font-bold text-slate-950">
+            <MoneyTotals totals={dailyAverageByCurrency} />
+          </div>
           <p className="mt-2 text-sm text-slate-500">Calculado sobre el periodo seleccionado.</p>
         </div>
         <HighestExpensesTable expenses={highestExpenses} cards={cards} categories={categories} />
@@ -175,13 +183,15 @@ export function BasicReports() {
   );
 }
 
-function groupExpensesByCategory(expenses: Expense[], categories: Category[]): ReportRow[] {
+function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[]): ReportRow[] {
   const totals = new Map<string, ReportRow>();
 
   expenses.forEach((expense) => {
     const label = getCategoryName(categories, expense.category_id);
-    const current = totals.get(label)?.value ?? 0;
-    totals.set(label, { id: label, label, value: current + Number(expense.amount) });
+    const currency = getCardCurrency(cards, expense.credit_card_id);
+    const id = `${label}-${currency}`;
+    const current = totals.get(id)?.value ?? 0;
+    totals.set(id, { id, label, currency, value: current + Number(expense.amount) });
   });
 
   return sortRows(totals);
@@ -191,9 +201,12 @@ function groupExpensesByCard(expenses: Expense[], cards: CreditCard[]): ReportRo
   const totals = new Map<string, ReportRow>();
 
   expenses.forEach((expense) => {
-    const label = getCardName(cards, expense.credit_card_id);
-    const current = totals.get(label)?.value ?? 0;
-    totals.set(label, { id: label, label, value: current + Number(expense.amount) });
+    const card = cards.find((item) => item.id === expense.credit_card_id);
+    const label = card?.name ?? "Tarjeta no encontrada";
+    const currency = card?.currency ?? DEFAULT_CURRENCY;
+    const id = `${label}-${currency}`;
+    const current = totals.get(id)?.value ?? 0;
+    totals.set(id, { id, label, currency, value: current + Number(expense.amount) });
   });
 
   return sortRows(totals);
@@ -203,9 +216,12 @@ function groupPaymentsByCard(payments: Payment[], cards: CreditCard[]): ReportRo
   const totals = new Map<string, ReportRow>();
 
   payments.forEach((payment) => {
-    const label = getCardName(cards, payment.credit_card_id);
-    const current = totals.get(label)?.value ?? 0;
-    totals.set(label, { id: label, label, value: current + Number(payment.amount) });
+    const card = cards.find((item) => item.id === payment.credit_card_id);
+    const label = card?.name ?? "Tarjeta no encontrada";
+    const currency = card?.currency ?? DEFAULT_CURRENCY;
+    const id = `${label}-${currency}`;
+    const current = totals.get(id)?.value ?? 0;
+    totals.set(id, { id, label, currency, value: current + Number(payment.amount) });
   });
 
   return sortRows(totals);
@@ -224,6 +240,7 @@ function buildComparisonByCard(cards: CreditCard[], expenses: Expense[], payment
       return {
         id: card.id,
         label: card.name,
+        currency: card.currency,
         spent,
         paid,
       };
@@ -262,11 +279,33 @@ function getCategoryName(categories: Category[], categoryId: string | null) {
   return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
 }
 
-function formatMoney(amount: number) {
-  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+function getCardCurrency(cards: CreditCard[], cardId: string | null) {
+  return cards.find((card) => card.id === cardId)?.currency ?? DEFAULT_CURRENCY;
 }
 
-function SummaryCard({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function buildPendingTotals(spentTotals: Array<{ currency: string; amount: number }>, paidTotals: Array<{ currency: string; amount: number }>) {
+  const currencies = Array.from(new Set([...spentTotals, ...paidTotals].map((total) => total.currency))).sort();
+
+  return currencies.map((currency) => {
+    const spent = spentTotals.find((total) => total.currency === currency)?.amount ?? 0;
+    const paid = paidTotals.find((total) => total.currency === currency)?.amount ?? 0;
+    return { currency, amount: Math.max(spent - paid, 0) };
+  });
+}
+
+function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
+  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+
+  return (
+    <span className="space-y-1">
+      {totals.map((total) => (
+        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+      ))}
+    </span>
+  );
+}
+
+function SummaryCard({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
@@ -288,7 +327,7 @@ function BarReport({ title, rows, emptyText }: { title: string; rows: ReportRow[
           <div key={row.id}>
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="truncate text-slate-700">{row.label}</span>
-              <span className="font-medium text-slate-950">{formatMoney(row.value)}</span>
+              <span className="font-medium text-slate-950">{formatCurrency(row.value, row.currency)}</span>
             </div>
             <div className="mt-2 h-2 rounded-full bg-slate-100">
               <div className="h-2 rounded-full bg-teal-600" style={{ width: `${Math.max((row.value / max) * 100, 2)}%` }} />
@@ -301,7 +340,7 @@ function BarReport({ title, rows, emptyText }: { title: string; rows: ReportRow[
   );
 }
 
-function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; spent: number; paid: number }> }) {
+function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; currency: string; spent: number; paid: number }> }) {
   const max = Math.max(...rows.flatMap((row) => [row.spent, row.paid]), 1);
 
   return (
@@ -311,8 +350,8 @@ function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; s
         {rows.map((row) => (
           <div key={row.id}>
             <p className="text-sm font-medium text-slate-800">{row.label}</p>
-            <ComparisonBar label="Gastado" value={row.spent} max={max} colorClass="bg-red-500" />
-            <ComparisonBar label="Pagado" value={row.paid} max={max} colorClass="bg-teal-600" />
+            <ComparisonBar label="Gastado" value={row.spent} max={max} currency={row.currency} colorClass="bg-red-500" />
+            <ComparisonBar label="Pagado" value={row.paid} max={max} currency={row.currency} colorClass="bg-teal-600" />
           </div>
         ))}
       </div>
@@ -321,12 +360,12 @@ function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; s
   );
 }
 
-function ComparisonBar({ label, value, max, colorClass }: { label: string; value: number; max: number; colorClass: string }) {
+function ComparisonBar({ label, value, max, currency, colorClass }: { label: string; value: number; max: number; currency: string; colorClass: string }) {
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between text-xs text-slate-500">
         <span>{label}</span>
-        <span>{formatMoney(value)}</span>
+        <span>{formatCurrency(value, currency)}</span>
       </div>
       <div className="mt-1 h-2 rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${Math.max((value / max) * 100, value > 0 ? 2 : 0)}%` }} />
@@ -365,7 +404,7 @@ function HighestExpensesTable({
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatMoney(Number(expense.amount))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(expense.amount), getCardCurrency(cards, expense.credit_card_id))}</td>
               </tr>
             ))}
           </tbody>
@@ -398,7 +437,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, payment.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                 <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatMoney(Number(payment.amount))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(payment.amount), getCardCurrency(cards, payment.credit_card_id))}</td>
               </tr>
             ))}
           </tbody>

@@ -8,6 +8,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
+import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Category, CreditCard, Expense } from "@/types/finance";
 
@@ -237,7 +238,7 @@ export function ExpenseManager() {
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar este gasto:\n\n${expense.description || "Sin descripcion"} - ${Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
+      `Vas a borrar este gasto:\n\n${expense.description || "Sin descripcion"} - ${formatCurrency(Number(expense.amount), getCardCurrency(expense.credit_card_id))}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
     );
 
     if (!confirmed) {
@@ -277,6 +278,10 @@ export function ExpenseManager() {
 
   function getCategoryName(categoryId: string | null) {
     return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
+  }
+
+  function getCardCurrency(cardId: string | null) {
+    return cards.find((card) => card.id === cardId)?.currency ?? DEFAULT_CURRENCY;
   }
 
   const filteredExpenses = expenses.filter((expense) =>
@@ -445,7 +450,7 @@ export function ExpenseManager() {
                   <td className="py-3 pr-4 text-slate-700">{getCategoryName(expense.category_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">
-                    {Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}
+                    {formatCurrency(Number(expense.amount), getCardCurrency(expense.credit_card_id))}
                   </td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">

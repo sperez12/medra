@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -113,10 +114,18 @@ export function DashboardSummary() {
     };
   });
 
-  const totalSpent = cardSummaries.reduce((total, item) => total + item.spent, 0);
-  const totalPaid = cardSummaries.reduce((total, item) => total + item.paid, 0);
-  const totalPending = cardSummaries.reduce((total, item) => total + item.pending, 0);
-  const totalAvailable = cardSummaries.reduce((total, item) => total + item.available, 0);
+  const totalSpentByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.spent, (item) => item.card.currency);
+  const totalPaidByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.paid, (item) => item.card.currency);
+  const totalPendingByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.pending, (item) => item.card.currency);
+  const totalAvailableByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.available, (item) => item.card.currency);
+  const summaryCurrencies = Array.from(
+    new Set([
+      ...totalSpentByCurrency,
+      ...totalPaidByCurrency,
+      ...totalPendingByCurrency,
+      ...totalAvailableByCurrency,
+    ].map((total) => total.currency))
+  ).sort();
   const cardsNearCut = cardSummaries.filter((item) => item.daysToCut <= 7);
   const cardsNearPayment = cardSummaries.filter((item) => item.daysToPayment <= 7);
   const filteredExpenses = expenses.filter((expense) =>
@@ -137,7 +146,21 @@ export function DashboardSummary() {
   );
   const recentExpenses = filteredExpenses.slice(0, 8);
   const recentPayments = filteredPayments.slice(0, 8);
-  const maxBarValue = Math.max(totalSpent, totalPaid, totalPending, totalAvailable, 1);
+  const visualSummaryRows = summaryCurrencies.map((currency) => {
+    const spent = getTotalForCurrency(totalSpentByCurrency, currency);
+    const paid = getTotalForCurrency(totalPaidByCurrency, currency);
+    const pending = getTotalForCurrency(totalPendingByCurrency, currency);
+    const available = getTotalForCurrency(totalAvailableByCurrency, currency);
+
+    return {
+      currency,
+      spent,
+      paid,
+      pending,
+      available,
+      max: Math.max(spent, paid, pending, available, 1),
+    };
+  });
 
   if (isLoading) {
     return <StatusPanel text="Cargando dashboard..." />;
@@ -159,10 +182,10 @@ export function DashboardSummary() {
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Gastado del periodo" value={formatMoney(totalSpent)} />
-        <SummaryCard label="Pagado del periodo" value={formatMoney(totalPaid)} />
-        <SummaryCard label="Saldo pendiente estimado" value={formatMoney(totalPending)} strong />
-        <SummaryCard label="Credito disponible estimado" value={formatMoney(totalAvailable)} />
+        <SummaryCard label="Gastado del periodo" value={<MoneyTotals totals={totalSpentByCurrency} />} />
+        <SummaryCard label="Pagado del periodo" value={<MoneyTotals totals={totalPaidByCurrency} />} />
+        <SummaryCard label="Saldo pendiente estimado" value={<MoneyTotals totals={totalPendingByCurrency} />} strong />
+        <SummaryCard label="Credito disponible estimado" value={<MoneyTotals totals={totalAvailableByCurrency} />} />
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
@@ -173,11 +196,19 @@ export function DashboardSummary() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-950">Resumen visual</h2>
-        <div className="mt-4 space-y-3">
-          <DashboardBar label="Gastado" value={totalSpent} max={maxBarValue} colorClass="bg-red-500" />
-          <DashboardBar label="Pagado" value={totalPaid} max={maxBarValue} colorClass="bg-teal-600" />
-          <DashboardBar label="Pendiente" value={totalPending} max={maxBarValue} colorClass="bg-amber-500" />
-          <DashboardBar label="Disponible" value={totalAvailable} max={maxBarValue} colorClass="bg-slate-500" />
+        <div className="mt-4 space-y-5">
+          {visualSummaryRows.map((row) => (
+            <div className="space-y-3" key={row.currency}>
+              <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
+              <DashboardBar label="Gastado" value={row.spent} max={row.max} currency={row.currency} colorClass="bg-red-500" />
+              <DashboardBar label="Pagado" value={row.paid} max={row.max} currency={row.currency} colorClass="bg-teal-600" />
+              <DashboardBar label="Pendiente" value={row.pending} max={row.max} currency={row.currency} colorClass="bg-amber-500" />
+              <DashboardBar label="Disponible" value={row.available} max={row.max} currency={row.currency} colorClass="bg-slate-500" />
+            </div>
+          ))}
+          {visualSummaryRows.length === 0 ? (
+            <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">Aun no hay datos para graficar.</p>
+          ) : null}
         </div>
       </section>
 
@@ -246,11 +277,27 @@ function getCategoryName(categories: Category[], categoryId: string | null) {
   return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
 }
 
-function formatMoney(amount: number) {
-  return amount.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
+function getCardCurrency(cards: CreditCard[], cardId: string | null) {
+  return cards.find((card) => card.id === cardId)?.currency ?? DEFAULT_CURRENCY;
 }
 
-function SummaryCard({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function getTotalForCurrency(totals: Array<{ currency: string; amount: number }>, currency: string) {
+  return totals.find((total) => total.currency === currency)?.amount ?? 0;
+}
+
+function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
+  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+
+  return (
+    <span className="space-y-1">
+      {totals.map((total) => (
+        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+      ))}
+    </span>
+  );
+}
+
+function SummaryCard({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
@@ -274,11 +321,13 @@ function DashboardBar({
   label,
   value,
   max,
+  currency,
   colorClass,
 }: {
   label: string;
   value: number;
   max: number;
+  currency: string;
   colorClass: string;
 }) {
   const width = Math.max((value / max) * 100, value > 0 ? 2 : 0);
@@ -287,7 +336,7 @@ function DashboardBar({
     <div>
       <div className="flex items-center justify-between text-sm">
         <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{formatMoney(value)}</span>
+        <span className="font-medium text-slate-900">{formatCurrency(value, currency)}</span>
       </div>
       <div className="mt-2 h-2 rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${width}%` }} />
@@ -370,7 +419,7 @@ function RecentExpensesTable({
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
                 <td className="py-3 text-right font-semibold text-slate-950">
-                  {formatMoney(Number(expense.amount))}
+                  {formatCurrency(Number(expense.amount), getCardCurrency(cards, expense.credit_card_id))}
                 </td>
               </tr>
             ))}
@@ -407,7 +456,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                 <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
                 <td className="py-3 text-right font-semibold text-slate-950">
-                  {formatMoney(Number(payment.amount))}
+                  {formatCurrency(Number(payment.amount), getCardCurrency(cards, payment.credit_card_id))}
                 </td>
               </tr>
             ))}
