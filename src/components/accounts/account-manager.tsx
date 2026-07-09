@@ -1,15 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
-import type { Account, AccountMovement, AccountMovementType, AccountType } from "@/types/finance";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { Account, AccountMovement, AccountMovementType, AccountTransfer, AccountType } from "@/types/finance";
 
 const accountTypeLabels: Record<AccountType, string> = {
   bank: "Banco",
   cash: "Efectivo",
   savings: "Ahorro",
-  manual_investment: "Inversión manual",
+  manual_investment: "Inversion manual",
   other: "Otra",
 };
 
@@ -19,6 +19,8 @@ const movementTypeLabels: Record<AccountMovementType, string> = {
   transfer: "Transferencia",
   adjustment: "Ajuste",
 };
+
+const manualMovementTypes: AccountMovementType[] = ["income", "expense", "adjustment"];
 
 const emptyAccountForm = {
   name: "",
@@ -38,6 +40,14 @@ const emptyMovementForm = {
   description: "",
 };
 
+const emptyTransferForm = {
+  from_account_id: "",
+  to_account_id: "",
+  transfer_date: new Date().toISOString().slice(0, 10),
+  amount: "0",
+  description: "",
+};
+
 type Message = {
   type: "success" | "error" | "info";
   text: string;
@@ -47,8 +57,10 @@ export function AccountManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [movements, setMovements] = useState<AccountMovement[]>([]);
+  const [transfers, setTransfers] = useState<AccountTransfer[]>([]);
   const [accountForm, setAccountForm] = useState(emptyAccountForm);
   const [movementForm, setMovementForm] = useState(emptyMovementForm);
+  const [transferForm, setTransferForm] = useState(emptyTransferForm);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,30 +78,38 @@ export function AccountManager() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "info", text: "Inicia sesión para ver tus cuentas." });
+      setMessage({ type: "info", text: "Inicia sesion para ver tus cuentas." });
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    const [{ data: accountData, error: accountError }, { data: movementData, error: movementError }] =
-      await Promise.all([
-        supabase
-          .from("accounts")
-          .select("*")
-          .eq("user_id", userData.user.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("account_movements")
-          .select("*")
-          .eq("user_id", userData.user.id)
-          .order("movement_date", { ascending: false }),
-      ]);
+    const [
+      { data: accountData, error: accountError },
+      { data: movementData, error: movementError },
+      { data: transferData, error: transferError },
+    ] = await Promise.all([
+      supabase
+        .from("accounts")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("account_movements")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("movement_date", { ascending: false }),
+      supabase
+        .from("account_transfers")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("transfer_date", { ascending: false }),
+    ]);
 
-    if (accountError || movementError) {
+    if (accountError || movementError || transferError) {
       setMessage({
         type: "error",
-        text: getFriendlyAccountError(accountError?.message ?? movementError?.message ?? "No se pudieron cargar las cuentas."),
+        text: getFriendlyAccountError(accountError?.message ?? movementError?.message ?? transferError?.message ?? "No se pudieron cargar las cuentas."),
       });
       setIsLoading(false);
       return;
@@ -97,6 +117,7 @@ export function AccountManager() {
 
     setAccounts((accountData ?? []) as Account[]);
     setMovements((movementData ?? []) as AccountMovement[]);
+    setTransfers((transferData ?? []) as AccountTransfer[]);
     setIsLoading(false);
   }
 
@@ -111,7 +132,7 @@ export function AccountManager() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesión para guardar cuentas." });
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar cuentas." });
       return;
     }
 
@@ -133,11 +154,7 @@ export function AccountManager() {
     };
 
     const request = editingAccountId
-      ? supabase
-          .from("accounts")
-          .update(payload)
-          .eq("id", editingAccountId)
-          .eq("user_id", userData.user.id)
+      ? supabase.from("accounts").update(payload).eq("id", editingAccountId).eq("user_id", userData.user.id)
       : supabase.from("accounts").insert(payload);
 
     const { error } = await request;
@@ -166,7 +183,7 @@ export function AccountManager() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesión para guardar movimientos." });
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar movimientos." });
       return;
     }
 
@@ -195,6 +212,84 @@ export function AccountManager() {
     await loadData();
   }
 
+  async function handleTransferSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de guardar transferencias." });
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar transferencias." });
+      return;
+    }
+
+    const validationError = validateTransferForm(transferForm, accounts);
+    if (validationError) {
+      setMessage({ type: "error", text: validationError });
+      return;
+    }
+
+    const fromAccount = getAccountById(accounts, transferForm.from_account_id);
+    const toAccount = getAccountById(accounts, transferForm.to_account_id);
+    const currency = normalizeCurrency(fromAccount?.currency);
+    const description = transferForm.description.trim() || `Transferencia de ${fromAccount?.name} a ${toAccount?.name}`;
+
+    const { data: savedTransfer, error: transferError } = await supabase
+      .from("account_transfers")
+      .insert({
+        user_id: userData.user.id,
+        from_account_id: transferForm.from_account_id,
+        to_account_id: transferForm.to_account_id,
+        transfer_date: transferForm.transfer_date,
+        amount: Number(transferForm.amount),
+        currency,
+        description,
+      })
+      .select("*")
+      .single();
+
+    if (transferError || !savedTransfer) {
+      setMessage({ type: "error", text: getFriendlyAccountError(transferError?.message ?? "No se pudo guardar la transferencia.") });
+      return;
+    }
+
+    const transfer = savedTransfer as AccountTransfer;
+    const { error: movementError } = await supabase.from("account_movements").insert([
+      {
+        user_id: userData.user.id,
+        account_id: transfer.from_account_id,
+        transfer_id: transfer.id,
+        movement_date: transfer.transfer_date,
+        movement_type: "expense",
+        amount: Number(transfer.amount),
+        description: `Salida por transferencia: ${description}`,
+      },
+      {
+        user_id: userData.user.id,
+        account_id: transfer.to_account_id,
+        transfer_id: transfer.id,
+        movement_date: transfer.transfer_date,
+        movement_type: "income",
+        amount: Number(transfer.amount),
+        description: `Entrada por transferencia: ${description}`,
+      },
+    ]);
+
+    if (movementError) {
+      await supabase.from("account_transfers").delete().eq("id", transfer.id).eq("user_id", userData.user.id);
+      setMessage({ type: "error", text: getFriendlyAccountError(movementError.message) });
+      return;
+    }
+
+    setTransferForm({ ...emptyTransferForm, from_account_id: transferForm.from_account_id });
+    setMessage({ type: "success", text: "Transferencia registrada correctamente. Se crearon el egreso y el ingreso automaticamente." });
+    await loadData();
+  }
+
   function startEditAccount(account: Account) {
     setEditingAccountId(account.id);
     setAccountForm({
@@ -212,7 +307,7 @@ export function AccountManager() {
   function cancelEditAccount() {
     setEditingAccountId(null);
     setAccountForm(emptyAccountForm);
-    setMessage({ type: "info", text: "Edición cancelada." });
+    setMessage({ type: "info", text: "Edicion cancelada." });
   }
 
   async function deleteAccount(account: Account) {
@@ -222,28 +317,25 @@ export function AccountManager() {
     }
 
     const movementCount = movements.filter((movement) => movement.account_id === account.id).length;
+    const transferCount = transfers.filter((transfer) => transfer.from_account_id === account.id || transfer.to_account_id === account.id).length;
     const warning =
-      movementCount > 0
-        ? `La cuenta "${account.name}" tiene ${movementCount} movimiento(s). Si la borras, esos movimientos también se borrarán.`
+      movementCount > 0 || transferCount > 0
+        ? `La cuenta "${account.name}" tiene ${movementCount} movimiento(s) y ${transferCount} transferencia(s). Si la borras, ese historial tambien se borrara.`
         : `Vas a borrar la cuenta "${account.name}".`;
 
-    const confirmed = window.confirm(`${warning}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`);
+    const confirmed = window.confirm(`${warning}\n\nEsta accion no se puede deshacer. ¿Seguro que quieres continuar?`);
     if (!confirmed) {
-      setMessage({ type: "info", text: "No se borró la cuenta." });
+      setMessage({ type: "info", text: "No se borro la cuenta." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesión para borrar cuentas." });
+      setMessage({ type: "error", text: "Primero inicia sesion para borrar cuentas." });
       return;
     }
 
-    const { error } = await supabase
-      .from("accounts")
-      .delete()
-      .eq("id", account.id)
-      .eq("user_id", userData.user.id);
+    const { error } = await supabase.from("accounts").delete().eq("id", account.id).eq("user_id", userData.user.id);
 
     if (error) {
       setMessage({ type: "error", text: getFriendlyAccountError(error.message) });
@@ -259,31 +351,78 @@ export function AccountManager() {
     await loadData();
   }
 
+  async function deleteTransfer(transfer: AccountTransfer) {
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de borrar transferencias." });
+      return;
+    }
+
+    const fromAccount = getAccountById(accounts, transfer.from_account_id);
+    const toAccount = getAccountById(accounts, transfer.to_account_id);
+    const confirmed = window.confirm(
+      `Vas a borrar esta transferencia:\n\n${fromAccount?.name ?? "Cuenta origen"} -> ${toAccount?.name ?? "Cuenta destino"}\n${formatCurrency(Number(transfer.amount), transfer.currency)}\n\nTambien se borraran el egreso y el ingreso asociados. Esta accion no se puede deshacer. ¿Seguro que quieres continuar?`
+    );
+
+    if (!confirmed) {
+      setMessage({ type: "info", text: "No se borro la transferencia." });
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "error", text: "Primero inicia sesion para borrar transferencias." });
+      return;
+    }
+
+    const { error: movementError } = await supabase
+      .from("account_movements")
+      .delete()
+      .eq("transfer_id", transfer.id)
+      .eq("user_id", userData.user.id);
+
+    if (movementError) {
+      setMessage({ type: "error", text: getFriendlyAccountError(movementError.message) });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("account_transfers")
+      .delete()
+      .eq("id", transfer.id)
+      .eq("user_id", userData.user.id);
+
+    if (error) {
+      setMessage({ type: "error", text: getFriendlyAccountError(error.message) });
+      return;
+    }
+
+    setMessage({ type: "success", text: "Transferencia borrada correctamente. Tambien se quitaron sus movimientos asociados." });
+    await loadData();
+  }
+
   const accountSummaries = accounts.map((account) => ({
     account,
     balance: calculateAccountBalance(account, movements),
     movementCount: movements.filter((movement) => movement.account_id === account.id).length,
   }));
   const activeAccounts = accountSummaries.filter(({ account }) => account.is_active);
-  const totalsByCurrency = groupMoneyByCurrency(
-    activeAccounts,
-    (item) => item.balance,
-    (item) => item.account.currency
-  );
-  const recentMovements = movements.slice(0, 8);
+  const totalsByCurrency = groupMoneyByCurrency(activeAccounts, (item) => item.balance, (item) => item.account.currency);
+  const recentMovements = movements.slice(0, 10);
+  const recentTransfers = transfers.slice(0, 8);
 
   return (
     <div className="space-y-6">
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Cuentas</h1>
         <p className="mt-2 text-slate-600">
-          Registra cuentas bancarias, efectivo y saldos manuales para preparar el cálculo de patrimonio.
+          Registra cuentas bancarias, efectivo, movimientos y transferencias entre cuentas.
         </p>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
         <SummaryCard label="Totales por moneda" value={<MoneyTotals totals={totalsByCurrency} />} />
         <SummaryCard label="Cuentas activas" value={String(activeAccounts.length)} />
+        <SummaryCard label="Transferencias" value={String(transfers.length)} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -294,51 +433,26 @@ export function AccountManager() {
           onChange={setAccountForm}
           onSubmit={handleAccountSubmit}
         />
-
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-950">Cuentas registradas</h2>
-          {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando cuentas...</p> : null}
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            {accountSummaries.map(({ account, balance, movementCount }) => (
-              <article className="rounded-lg border border-slate-200 p-4" key={account.id}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-slate-950">{account.name}</h3>
-                    <p className="text-sm text-slate-500">{account.institution || "Sin institución"}</p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      {accountTypeLabels[account.account_type]} - {account.currency}
-                    </p>
-                  </div>
-                  <StatusPill active={account.is_active} />
-                </div>
-                <p className="mt-4 text-sm text-slate-500">Saldo actual estimado</p>
-                <p className="text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
-                <p className="mt-1 text-xs text-slate-500">{movementCount} movimiento(s)</p>
-                {account.description ? <p className="mt-3 text-sm text-slate-600">{account.description}</p> : null}
-                <div className="mt-4 flex gap-2">
-                  <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => startEditAccount(account)} type="button">
-                    Editar
-                  </button>
-                  <button className="rounded-md border border-red-200 px-3 py-2 text-sm text-red-700" onClick={() => deleteAccount(account)} type="button">
-                    Borrar
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-          {!isLoading && accountSummaries.length === 0 ? (
-            <EmptyMessage text="Todavía no hay cuentas. Crea tu primera cuenta para empezar a registrar saldos." />
-          ) : null}
-        </div>
+        <AccountList
+          accountSummaries={accountSummaries}
+          isLoading={isLoading}
+          onDelete={deleteAccount}
+          onEdit={startEditAccount}
+        />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
-        <MovementForm
+        <TransferForm
           accounts={accounts}
-          form={movementForm}
-          onChange={setMovementForm}
-          onSubmit={handleMovementSubmit}
+          form={transferForm}
+          onChange={setTransferForm}
+          onSubmit={handleTransferSubmit}
         />
+        <RecentTransfers accounts={accounts} transfers={recentTransfers} onDelete={deleteTransfer} />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+        <MovementForm accounts={accounts} form={movementForm} onChange={setMovementForm} onSubmit={handleMovementSubmit} />
         <RecentMovements accounts={accounts} movements={recentMovements} />
       </section>
 
@@ -365,25 +479,19 @@ function AccountForm({
       <h2 className="text-lg font-semibold text-slate-950">{editingAccountId ? "Editar cuenta" : "Nueva cuenta"}</h2>
       <div className="mt-4 grid gap-4">
         <TextInput label="Nombre de la cuenta" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
-        <TextInput label="Institución o banco" value={form.institution} onChange={(value) => onChange({ ...form, institution: value })} required={false} />
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">Tipo de cuenta</span>
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, account_type: event.target.value as AccountType })} value={form.account_type}>
-            {Object.entries(accountTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">Moneda</span>
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, currency: event.target.value })} value={form.currency}>
-            {SUPPORTED_CURRENCIES.map((currency) => (
-              <option key={currency.code} value={currency.code}>{currency.label}</option>
-            ))}
-          </select>
-        </label>
+        <TextInput label="Institucion o banco" value={form.institution} onChange={(value) => onChange({ ...form, institution: value })} required={false} />
+        <SelectInput label="Tipo de cuenta" value={form.account_type} onChange={(value) => onChange({ ...form, account_type: value as AccountType })}>
+          {Object.entries(accountTypeLabels).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </SelectInput>
+        <SelectInput label="Moneda" value={form.currency} onChange={(value) => onChange({ ...form, currency: value })}>
+          {SUPPORTED_CURRENCIES.map((currency) => (
+            <option key={currency.code} value={currency.code}>{currency.label}</option>
+          ))}
+        </SelectInput>
         <TextInput label="Saldo inicial" min="0" step="0.01" type="number" value={form.initial_balance} onChange={(value) => onChange({ ...form, initial_balance: value })} />
-        <TextInput label="Descripción opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
+        <TextInput label="Descripcion opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input checked={form.is_active} onChange={(event) => onChange({ ...form, is_active: event.target.checked })} type="checkbox" />
           Activa
@@ -394,9 +502,88 @@ function AccountForm({
       </button>
       {editingAccountId ? (
         <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" onClick={onCancel} type="button">
-          Cancelar edición
+          Cancelar edicion
         </button>
       ) : null}
+    </form>
+  );
+}
+
+function AccountList({
+  accountSummaries,
+  isLoading,
+  onEdit,
+  onDelete,
+}: {
+  accountSummaries: Array<{ account: Account; balance: number; movementCount: number }>;
+  isLoading: boolean;
+  onEdit: (account: Account) => void;
+  onDelete: (account: Account) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Cuentas registradas</h2>
+      {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando cuentas...</p> : null}
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        {accountSummaries.map(({ account, balance, movementCount }) => (
+          <article className="rounded-lg border border-slate-200 p-4" key={account.id}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-semibold text-slate-950">{account.name}</h3>
+                <p className="text-sm text-slate-500">{account.institution || "Sin institucion"}</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {accountTypeLabels[account.account_type]} - {account.currency}
+                </p>
+              </div>
+              <StatusPill active={account.is_active} />
+            </div>
+            <p className="mt-4 text-sm text-slate-500">Saldo actual estimado</p>
+            <p className="text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
+            <p className="mt-1 text-xs text-slate-500">{movementCount} movimiento(s)</p>
+            {account.description ? <p className="mt-3 text-sm text-slate-600">{account.description}</p> : null}
+            <div className="mt-4 flex gap-2">
+              <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => onEdit(account)} type="button">
+                Editar
+              </button>
+              <button className="rounded-md border border-red-200 px-3 py-2 text-sm text-red-700" onClick={() => onDelete(account)} type="button">
+                Borrar
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      {!isLoading && accountSummaries.length === 0 ? (
+        <EmptyMessage text="Todavia no hay cuentas. Crea tu primera cuenta para empezar a registrar saldos." />
+      ) : null}
+    </div>
+  );
+}
+
+function TransferForm({
+  accounts,
+  form,
+  onChange,
+  onSubmit,
+}: {
+  accounts: Account[];
+  form: typeof emptyTransferForm;
+  onChange: (form: typeof emptyTransferForm) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">Nueva transferencia</h2>
+      <p className="mt-1 text-sm text-slate-600">Por ahora solo se permiten transferencias entre cuentas con la misma moneda.</p>
+      <div className="mt-4 grid gap-4">
+        <AccountSelect accounts={accounts} label="Cuenta origen" value={form.from_account_id} onChange={(value) => onChange({ ...form, from_account_id: value })} />
+        <AccountSelect accounts={accounts} label="Cuenta destino" value={form.to_account_id} onChange={(value) => onChange({ ...form, to_account_id: value })} />
+        <TextInput label="Fecha" type="date" value={form.transfer_date} onChange={(value) => onChange({ ...form, transfer_date: value })} />
+        <TextInput label="Monto" min="0.01" step="0.01" type="number" value={form.amount} onChange={(value) => onChange({ ...form, amount: value })} />
+        <TextInput label="Descripcion opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
+      </div>
+      <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
+        Registrar transferencia
+      </button>
     </form>
   );
 }
@@ -414,28 +601,17 @@ function MovementForm({
 }) {
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-slate-950">Nuevo movimiento</h2>
+      <h2 className="text-lg font-semibold text-slate-950">Nuevo movimiento manual</h2>
       <div className="mt-4 grid gap-4">
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">Cuenta</span>
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, account_id: event.target.value })} required value={form.account_id}>
-            <option value="">Selecciona una cuenta</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>{account.name}</option>
-            ))}
-          </select>
-        </label>
+        <AccountSelect accounts={accounts} label="Cuenta" value={form.account_id} onChange={(value) => onChange({ ...form, account_id: value })} />
         <TextInput label="Fecha" type="date" value={form.movement_date} onChange={(value) => onChange({ ...form, movement_date: value })} />
-        <label className="block">
-          <span className="text-sm font-medium text-slate-700">Tipo de movimiento</span>
-          <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange({ ...form, movement_type: event.target.value as AccountMovementType })} value={form.movement_type}>
-            {Object.entries(movementTypeLabels).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
+        <SelectInput label="Tipo de movimiento" value={form.movement_type} onChange={(value) => onChange({ ...form, movement_type: value as AccountMovementType })}>
+          {manualMovementTypes.map((value) => (
+            <option key={value} value={value}>{movementTypeLabels[value]}</option>
+          ))}
+        </SelectInput>
         <TextInput label="Monto" min="0.01" step="0.01" type="number" value={form.amount} onChange={(value) => onChange({ ...form, amount: value })} />
-        <TextInput label="Descripción opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
+        <TextInput label="Descripcion opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
       </div>
       <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
         Registrar movimiento
@@ -444,30 +620,84 @@ function MovementForm({
   );
 }
 
+function RecentTransfers({
+  accounts,
+  transfers,
+  onDelete,
+}: {
+  accounts: Account[];
+  transfers: AccountTransfer[];
+  onDelete: (transfer: AccountTransfer) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">Transferencias recientes</h2>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-4 font-medium">Fecha</th>
+              <th className="py-2 pr-4 font-medium">Origen</th>
+              <th className="py-2 pr-4 font-medium">Destino</th>
+              <th className="py-2 pr-4 font-medium">Descripcion</th>
+              <th className="py-2 text-right font-medium">Monto</th>
+              <th className="py-2 pl-4 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transfers.map((transfer) => {
+              const fromAccount = getAccountById(accounts, transfer.from_account_id);
+              const toAccount = getAccountById(accounts, transfer.to_account_id);
+              return (
+                <tr className="border-b border-slate-100" key={transfer.id}>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(transfer.transfer_date)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{fromAccount?.name ?? "Cuenta no encontrada"}</td>
+                  <td className="py-3 pr-4 text-slate-700">{toAccount?.name ?? "Cuenta no encontrada"}</td>
+                  <td className="py-3 pr-4 text-slate-700">{transfer.description || "Sin descripcion"}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(transfer.amount), transfer.currency)}</td>
+                  <td className="py-3 pl-4 text-right">
+                    <button className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={() => onDelete(transfer)} type="button">
+                      Borrar
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {transfers.length === 0 ? <EmptyMessage text="Todavia no hay transferencias registradas." /> : null}
+    </div>
+  );
+}
+
 function RecentMovements({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-950">Últimos movimientos</h2>
+      <h2 className="text-lg font-semibold text-slate-950">Ultimos movimientos</h2>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="py-2 pr-4 font-medium">Fecha</th>
               <th className="py-2 pr-4 font-medium">Cuenta</th>
               <th className="py-2 pr-4 font-medium">Tipo</th>
-              <th className="py-2 pr-4 font-medium">Descripción</th>
+              <th className="py-2 pr-4 font-medium">Descripcion</th>
               <th className="py-2 text-right font-medium">Monto</th>
             </tr>
           </thead>
           <tbody>
             {movements.map((movement) => {
-              const account = accounts.find((item) => item.id === movement.account_id);
+              const account = getAccountById(accounts, movement.account_id);
               return (
                 <tr className="border-b border-slate-100" key={movement.id}>
-                  <td className="py-3 pr-4 text-slate-700">{new Date(`${movement.movement_date}T00:00:00`).toLocaleDateString("es-MX")}</td>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(movement.movement_date)}</td>
                   <td className="py-3 pr-4 text-slate-700">{account?.name ?? "Cuenta no encontrada"}</td>
-                  <td className="py-3 pr-4 text-slate-700">{movementTypeLabels[movement.movement_type]}</td>
-                  <td className="py-3 pr-4 text-slate-700">{movement.description || "Sin descripción"}</td>
+                  <td className="py-3 pr-4 text-slate-700">
+                    {movementTypeLabels[movement.movement_type]}
+                    {movement.transfer_id ? <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">Transferencia</span> : null}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">{movement.description || "Sin descripcion"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(movement.amount), account?.currency)}</td>
                 </tr>
               );
@@ -475,8 +705,21 @@ function RecentMovements({ accounts, movements }: { accounts: Account[]; movemen
           </tbody>
         </table>
       </div>
-      {movements.length === 0 ? <EmptyMessage text="Todavía no hay movimientos registrados." /> : null}
+      {movements.length === 0 ? <EmptyMessage text="Todavia no hay movimientos registrados." /> : null}
     </div>
+  );
+}
+
+function AccountSelect({ accounts, label, value, onChange }: { accounts: Account[]; label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <SelectInput label={label} value={value} onChange={onChange}>
+      <option value="">Selecciona una cuenta</option>
+      {accounts.map((account) => (
+        <option key={account.id} value={account.id}>
+          {account.name} - {account.currency}
+        </option>
+      ))}
+    </SelectInput>
   );
 }
 
@@ -505,11 +748,38 @@ function validateMovementForm(form: typeof emptyMovementForm) {
   return "";
 }
 
+function validateTransferForm(form: typeof emptyTransferForm, accounts: Account[]) {
+  if (!form.from_account_id) return "Selecciona la cuenta origen.";
+  if (!form.to_account_id) return "Selecciona la cuenta destino.";
+  if (form.from_account_id === form.to_account_id) return "La cuenta origen y la cuenta destino deben ser diferentes.";
+  if (!form.transfer_date) return "Selecciona la fecha de la transferencia.";
+  if (Number(form.amount) <= 0) return "El monto debe ser mayor a 0.";
+
+  const fromAccount = getAccountById(accounts, form.from_account_id);
+  const toAccount = getAccountById(accounts, form.to_account_id);
+  if (!fromAccount || !toAccount) return "Selecciona cuentas validas.";
+
+  if (normalizeCurrency(fromAccount.currency) !== normalizeCurrency(toAccount.currency)) {
+    return "Por ahora no se permiten transferencias entre monedas distintas. Necesitan tipo de cambio y lo agregaremos en una fase posterior.";
+  }
+
+  return "";
+}
+
+function getAccountById(accounts: Account[], accountId: string | null) {
+  return accounts.find((account) => account.id === accountId);
+}
+
 function getFriendlyAccountError(error: string) {
+  if (error.includes("account_transfers") || error.includes("transfer_id") || error.includes("schema cache")) {
+    return "Falta actualizar Supabase para transferencias. Ejecuta el SQL docs/ADD_ACCOUNT_TRANSFERS.sql.";
+  }
+
   if (error.includes("account_type") || error.includes("description")) {
     return "Falta actualizar Supabase para cuentas. Ejecuta el SQL docs/ADD_ACCOUNTS.sql.";
   }
-  return `No se pudo completar la acción. Detalle: ${error}`;
+
+  return `No se pudo completar la accion. Detalle: ${error}`;
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
@@ -544,7 +814,36 @@ function TextInput({
   return (
     <label className="block">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" min={min} onChange={(event) => onChange(event.target.value)} required={required} step={step} type={type} value={value} />
+      <input
+        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        min={min}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        step={step}
+        type={type}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function SelectInput({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange(event.target.value)} value={value}>
+        {children}
+      </select>
     </label>
   );
 }
@@ -578,4 +877,8 @@ function StatusMessage({ message }: { message: Message }) {
   };
 
   return <p className={`rounded-md border px-3 py-2 text-sm ${styles[message.type]}`}>{message.text}</p>;
+}
+
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
 }

@@ -85,11 +85,25 @@ create table if not exists public.installment_purchases (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.account_transfers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  from_account_id uuid not null references public.accounts(id) on delete cascade,
+  to_account_id uuid not null references public.accounts(id) on delete cascade,
+  transfer_date date not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  currency text not null default 'MXN',
+  description text,
+  created_at timestamptz not null default now(),
+  check (from_account_id <> to_account_id)
+);
+
 create table if not exists public.account_movements (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   account_id uuid not null references public.accounts(id) on delete cascade,
   payment_id uuid references public.payments(id) on delete cascade,
+  transfer_id uuid references public.account_transfers(id) on delete cascade,
   movement_date date not null,
   amount numeric(14, 2) not null,
   movement_type text not null check (movement_type in ('income', 'expense', 'transfer', 'adjustment')),
@@ -197,4 +211,7 @@ create index if not exists payments_credit_card_id_idx on public.payments(credit
 create index if not exists payments_payment_date_idx on public.payments(payment_date);
 create index if not exists account_movements_user_id_idx on public.account_movements(user_id);
 create index if not exists account_movements_payment_id_idx on public.account_movements(payment_id);
+create index if not exists account_movements_transfer_id_idx on public.account_movements(transfer_id);
+create index if not exists account_transfers_user_id_idx on public.account_transfers(user_id);
+create index if not exists account_transfers_transfer_date_idx on public.account_transfers(transfer_date);
 create index if not exists financial_events_user_id_idx on public.financial_events(user_id);

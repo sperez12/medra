@@ -6,6 +6,7 @@ alter table public.expenses enable row level security;
 alter table public.payments enable row level security;
 alter table public.installment_purchases enable row level security;
 alter table public.account_movements enable row level security;
+alter table public.account_transfers enable row level security;
 alter table public.platforms enable row level security;
 alter table public.assets enable row level security;
 alter table public.holdings enable row level security;
@@ -64,6 +65,11 @@ with check (auth.uid() = user_id);
 
 create policy "Users can manage their account movements"
 on public.account_movements for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Users can manage their account transfers"
+on public.account_transfers for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 

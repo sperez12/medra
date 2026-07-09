@@ -73,9 +73,22 @@ export type AccountMovement = {
   user_id: string;
   account_id: string;
   payment_id: string | null;
+  transfer_id: string | null;
   movement_date: string;
   amount: number;
   movement_type: AccountMovementType;
+  description: string | null;
+  created_at: string;
+};
+
+export type AccountTransfer = {
+  id: string;
+  user_id: string;
+  from_account_id: string;
+  to_account_id: string;
+  transfer_date: string;
+  amount: number;
+  currency: CurrencyCode | string;
   description: string | null;
   created_at: string;
 };
