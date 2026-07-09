@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { AppShell } from "@/components/app-shell";
+import { AccountManager } from "@/components/accounts/account-manager";
 
-export default function Page() {
-  return <PlaceholderPage title="Cuentas" description="Aqui se gestionaran cuentas bancarias, efectivo y movimientos." />;
+export default function AccountsPage() {
+  return (
+    <AppShell>
+      <AccountManager />
+    </AppShell>
+  );
 }

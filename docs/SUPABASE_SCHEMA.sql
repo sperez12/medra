@@ -37,9 +37,10 @@ create table if not exists public.accounts (
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   institution text,
-  account_type text not null check (account_type in ('bank', 'cash', 'investment', 'other')),
+  account_type text not null check (account_type in ('bank', 'cash', 'savings', 'manual_investment', 'other')),
   currency text not null default 'MXN',
   initial_balance numeric(14, 2) not null default 0,
+  description text,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );

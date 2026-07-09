@@ -48,3 +48,31 @@ export type Category = {
   type: "expense" | "income";
   color: string | null;
 };
+
+export type AccountType = "bank" | "cash" | "savings" | "manual_investment" | "other";
+
+export type Account = {
+  id: string;
+  user_id: string;
+  name: string;
+  institution: string | null;
+  account_type: AccountType;
+  currency: "MXN" | "USD";
+  initial_balance: number;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type AccountMovementType = "income" | "expense" | "transfer" | "adjustment";
+
+export type AccountMovement = {
+  id: string;
+  user_id: string;
+  account_id: string;
+  movement_date: string;
+  amount: number;
+  movement_type: AccountMovementType;
+  description: string | null;
+  created_at: string;
+};
