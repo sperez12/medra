@@ -1,6 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { PeriodFilterControls } from "@/components/period-filter-controls";
+import {
+  getDefaultPeriodFilter,
+  getPeriodLabel,
+  isDateInSelectedPeriod,
+  type PeriodFilterState,
+} from "@/lib/period-filters";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { CreditCard, Payment, PaymentType } from "@/types/finance";
 
@@ -31,6 +38,7 @@ export function PaymentManager() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -62,11 +70,10 @@ export function PaymentManager() {
           .eq("is_active", true)
           .order("name"),
         supabase
-          .from("payments")
-          .select("*")
-          .eq("user_id", userData.user.id)
-          .order("payment_date", { ascending: false })
-          .limit(30),
+        .from("payments")
+        .select("*")
+        .eq("user_id", userData.user.id)
+          .order("payment_date", { ascending: false }),
       ]);
 
     if (cardError || paymentError) {
@@ -200,6 +207,15 @@ export function PaymentManager() {
     return cards.find((card) => card.id === cardId)?.name ?? "Tarjeta no encontrada";
   }
 
+  const filteredPayments = payments.filter((payment) =>
+    isDateInSelectedPeriod({
+      dateValue: payment.payment_date,
+      cardId: payment.credit_card_id,
+      cards,
+      filter: periodFilter,
+    })
+  );
+
   return (
     <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
       <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
@@ -291,7 +307,13 @@ export function PaymentManager() {
       </form>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Pagos recientes</h2>
+        <div className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Pagos</h2>
+            <p className="mt-1 text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
+          </div>
+          <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
+        </div>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando pagos...</p> : null}
 
         <div className="mt-4 overflow-x-auto">
@@ -307,7 +329,7 @@ export function PaymentManager() {
               </tr>
             </thead>
             <tbody>
-              {payments.map((payment) => (
+              {filteredPayments.map((payment) => (
                 <tr className="border-b border-slate-100" key={payment.id}>
                   <td className="py-3 pr-4 text-slate-700">
                     {new Date(`${payment.payment_date}T00:00:00`).toLocaleDateString("es-MX")}
@@ -340,9 +362,9 @@ export function PaymentManager() {
           </table>
         </div>
 
-        {!isLoading && payments.length === 0 ? (
+        {!isLoading && filteredPayments.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
-            Todavia no hay pagos registrados.
+            No hay pagos para el periodo seleccionado.
           </p>
         ) : null}
       </div>

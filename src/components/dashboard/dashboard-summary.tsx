@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getCurrentCardPeriod } from "@/lib/periods";
+import {
+  getDefaultPeriodFilter,
+  getPeriodLabel,
+  getRangeForCard,
+  isDateInSelectedPeriod,
+  type PeriodFilterState,
+} from "@/lib/period-filters";
 import type { Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -24,6 +31,7 @@ export function DashboardSummary() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -85,7 +93,7 @@ export function DashboardSummary() {
   }
 
   const cardSummaries = cards.map((card) => {
-    const period = getCurrentCardPeriod(card.statement_cut_day);
+    const period = getRangeForCard(periodFilter, card);
     const spent = sumExpensesForCardPeriod(expenses, card.id, period.start, period.end);
     const paid = sumPaymentsForCardPeriod(payments, card.id, period.start, period.end);
     const pending = Math.max(spent - paid, 0);
@@ -111,8 +119,24 @@ export function DashboardSummary() {
   const totalAvailable = cardSummaries.reduce((total, item) => total + item.available, 0);
   const cardsNearCut = cardSummaries.filter((item) => item.daysToCut <= 7);
   const cardsNearPayment = cardSummaries.filter((item) => item.daysToPayment <= 7);
-  const recentExpenses = expenses.slice(0, 8);
-  const recentPayments = payments.slice(0, 8);
+  const filteredExpenses = expenses.filter((expense) =>
+    isDateInSelectedPeriod({
+      dateValue: expense.expense_date,
+      cardId: expense.credit_card_id,
+      cards,
+      filter: periodFilter,
+    })
+  );
+  const filteredPayments = payments.filter((payment) =>
+    isDateInSelectedPeriod({
+      dateValue: payment.payment_date,
+      cardId: payment.credit_card_id,
+      cards,
+      filter: periodFilter,
+    })
+  );
+  const recentExpenses = filteredExpenses.slice(0, 8);
+  const recentPayments = filteredPayments.slice(0, 8);
   const maxBarValue = Math.max(totalSpent, totalPaid, totalPending, totalAvailable, 1);
 
   if (isLoading) {
@@ -128,9 +152,11 @@ export function DashboardSummary() {
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
         <p className="mt-2 text-slate-600">
-          Resumen global de tus tarjetas, gastos y pagos del periodo actual.
+          Resumen global de tus tarjetas, gastos y pagos. Vista actual: {getPeriodLabel(periodFilter)}.
         </p>
       </section>
+
+      <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Gastado del periodo" value={formatMoney(totalSpent)} />

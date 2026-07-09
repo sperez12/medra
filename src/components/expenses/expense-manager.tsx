@@ -1,6 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { PeriodFilterControls } from "@/components/period-filter-controls";
+import {
+  getDefaultPeriodFilter,
+  getPeriodLabel,
+  isDateInSelectedPeriod,
+  type PeriodFilterState,
+} from "@/lib/period-filters";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Category, CreditCard, Expense } from "@/types/finance";
 
@@ -42,6 +49,7 @@ export function ExpenseManager() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -80,8 +88,7 @@ export function ExpenseManager() {
         .from("expenses")
         .select("*")
         .eq("user_id", userData.user.id)
-        .order("expense_date", { ascending: false })
-        .limit(20),
+        .order("expense_date", { ascending: false }),
     ]);
 
     if (cardError || expenseError) {
@@ -272,6 +279,15 @@ export function ExpenseManager() {
     return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
   }
 
+  const filteredExpenses = expenses.filter((expense) =>
+    isDateInSelectedPeriod({
+      dateValue: expense.expense_date,
+      cardId: expense.credit_card_id,
+      cards,
+      filter: periodFilter,
+    })
+  );
+
   return (
     <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
       <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
@@ -399,7 +415,13 @@ export function ExpenseManager() {
       </form>
 
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Gastos recientes</h2>
+        <div className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Gastos</h2>
+            <p className="mt-1 text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
+          </div>
+          <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
+        </div>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse text-left text-sm">
@@ -414,7 +436,7 @@ export function ExpenseManager() {
               </tr>
             </thead>
             <tbody>
-              {expenses.map((expense) => (
+              {filteredExpenses.map((expense) => (
                 <tr className="border-b border-slate-100" key={expense.id}>
                   <td className="py-3 pr-4 text-slate-700">
                     {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")}
@@ -448,9 +470,9 @@ export function ExpenseManager() {
             </tbody>
           </table>
         </div>
-        {!isLoading && expenses.length === 0 ? (
+        {!isLoading && filteredExpenses.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
-            Todavia no hay gastos registrados.
+            No hay gastos para el periodo seleccionado.
           </p>
         ) : null}
       </div>

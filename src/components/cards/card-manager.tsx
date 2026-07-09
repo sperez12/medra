@@ -1,8 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getCurrentCardPeriod } from "@/lib/periods";
+import {
+  getDefaultPeriodFilter,
+  getPeriodLabel,
+  getRangeForCard,
+  type PeriodFilterState,
+} from "@/lib/period-filters";
 import type { CreditCard, Expense, Payment } from "@/types/finance";
 
 const emptyForm = {
@@ -29,6 +35,7 @@ export function CardManager() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -195,8 +202,8 @@ export function CardManager() {
     await loadData();
   }
 
-  function getCurrentPeriodTotal(card: CreditCard) {
-    const period = getCurrentCardPeriod(card.statement_cut_day);
+  function getSelectedPeriodTotal(card: CreditCard) {
+    const period = getRangeForCard(periodFilter, card);
 
     return expenses
       .filter((expense) => {
@@ -210,8 +217,8 @@ export function CardManager() {
       .reduce((total, expense) => total + Number(expense.amount), 0);
   }
 
-  function getCurrentPeriodPayments(card: CreditCard) {
-    const period = getCurrentCardPeriod(card.statement_cut_day);
+  function getSelectedPeriodPayments(card: CreditCard) {
+    const period = getRangeForCard(periodFilter, card);
 
     return payments
       .filter((payment) => {
@@ -267,7 +274,11 @@ export function CardManager() {
         {message ? <StatusMessage message={message} /> : null}
       </form>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="space-y-4">
+        <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
+        <p className="text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
+
+        <div className="grid gap-4 xl:grid-cols-2">
         {isLoading ? (
           <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">
             Cargando tarjetas...
@@ -275,9 +286,9 @@ export function CardManager() {
         ) : null}
 
         {cards.map((card) => {
-          const period = getCurrentCardPeriod(card.statement_cut_day);
-          const total = getCurrentPeriodTotal(card);
-          const paid = getCurrentPeriodPayments(card);
+          const period = getRangeForCard(periodFilter, card);
+          const total = getSelectedPeriodTotal(card);
+          const paid = getSelectedPeriodPayments(card);
           const pending = Math.max(total - paid, 0);
           const limit = Number(card.credit_limit);
           const available = Math.max(limit - pending, 0);
@@ -364,6 +375,7 @@ export function CardManager() {
             Todavia no hay tarjetas. Crea la primera desde el formulario.
           </div>
         ) : null}
+        </div>
       </div>
     </div>
   );
