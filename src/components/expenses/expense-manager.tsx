@@ -41,6 +41,7 @@ export function ExpenseManager() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -150,13 +151,13 @@ export function ExpenseManager() {
     setMessage(null);
 
     if (!supabase) {
-      setMessage({ type: "error", text: "Falta configurar Supabase antes de registrar gastos." });
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de guardar gastos." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesion para registrar gastos." });
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar gastos." });
       return;
     }
 
@@ -178,14 +179,88 @@ export function ExpenseManager() {
       installment_months: form.is_installment_purchase ? Number(form.installment_months) : null,
     };
 
-    const { error } = await supabase.from("expenses").insert(payload);
+    const request = editingExpenseId
+      ? supabase
+          .from("expenses")
+          .update(payload)
+          .eq("id", editingExpenseId)
+          .eq("user_id", userData.user.id)
+      : supabase.from("expenses").insert(payload);
+
+    const { error } = await request;
     if (error) {
       setMessage({ type: "error", text: getFriendlyExpenseError(error.message) });
       return;
     }
 
     setForm({ ...emptyForm, credit_card_id: form.credit_card_id, category_id: form.category_id });
-    setMessage({ type: "success", text: "Gasto registrado correctamente." });
+    setEditingExpenseId(null);
+    setMessage({
+      type: "success",
+      text: editingExpenseId ? "Gasto actualizado correctamente." : "Gasto registrado correctamente.",
+    });
+    await loadData();
+  }
+
+  function startEdit(expense: Expense) {
+    setEditingExpenseId(expense.id);
+    setForm({
+      credit_card_id: expense.credit_card_id,
+      category_id: expense.category_id ?? "",
+      expense_date: expense.expense_date,
+      amount: String(expense.amount),
+      description: expense.description ?? "",
+      expense_type: expense.expense_type,
+      is_installment_purchase: expense.is_installment_purchase,
+      installment_months: expense.installment_months ? String(expense.installment_months) : "",
+    });
+    setMessage({ type: "info", text: "Editando gasto. Cuando termines, presiona Guardar cambios." });
+  }
+
+  function cancelEdit() {
+    setEditingExpenseId(null);
+    setForm(emptyForm);
+    setMessage({ type: "info", text: "Edicion cancelada." });
+  }
+
+  async function deleteExpense(expense: Expense) {
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de borrar gastos." });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Vas a borrar este gasto:\n\n${expense.description || "Sin descripcion"} - ${Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}\n\nEsta accion no se puede deshacer. ¿Seguro que quieres continuar?`
+    );
+
+    if (!confirmed) {
+      setMessage({ type: "info", text: "No se borro el gasto." });
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "error", text: "Primero inicia sesion para borrar gastos." });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("expenses")
+      .delete()
+      .eq("id", expense.id)
+      .eq("user_id", userData.user.id);
+
+    if (error) {
+      setMessage({ type: "error", text: getFriendlyExpenseError(error.message) });
+      return;
+    }
+
+    if (editingExpenseId === expense.id) {
+      setEditingExpenseId(null);
+      setForm(emptyForm);
+    }
+
+    setMessage({ type: "success", text: "Gasto borrado correctamente. La vista de tarjetas se actualizara al entrar de nuevo a Tarjetas." });
     await loadData();
   }
 
@@ -200,7 +275,9 @@ export function ExpenseManager() {
   return (
     <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
       <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
-        <h2 className="text-lg font-semibold text-slate-950">Nuevo gasto</h2>
+        <h2 className="text-lg font-semibold text-slate-950">
+          {editingExpenseId ? "Editar gasto" : "Nuevo gasto"}
+        </h2>
         <div className="mt-4 grid gap-4">
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Tarjeta</span>
@@ -307,8 +384,17 @@ export function ExpenseManager() {
         </div>
 
         <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
-          Registrar gasto
+          {editingExpenseId ? "Guardar cambios" : "Registrar gasto"}
         </button>
+        {editingExpenseId ? (
+          <button
+            className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700"
+            onClick={cancelEdit}
+            type="button"
+          >
+            Cancelar edicion
+          </button>
+        ) : null}
         {message ? <StatusMessage message={message} /> : null}
       </form>
 
@@ -316,7 +402,7 @@ export function ExpenseManager() {
         <h2 className="text-lg font-semibold text-slate-950">Gastos recientes</h2>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[860px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
                 <th className="py-2 pr-4 font-medium">Fecha</th>
@@ -324,6 +410,7 @@ export function ExpenseManager() {
                 <th className="py-2 pr-4 font-medium">Categoria</th>
                 <th className="py-2 pr-4 font-medium">Descripcion</th>
                 <th className="py-2 text-right font-medium">Monto</th>
+                <th className="py-2 pl-4 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -337,6 +424,24 @@ export function ExpenseManager() {
                   <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">
                     {Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}
+                  </td>
+                  <td className="py-3 pl-4">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700"
+                        onClick={() => startEdit(expense)}
+                        type="button"
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700"
+                        onClick={() => deleteExpense(expense)}
+                        type="button"
+                      >
+                        Borrar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
