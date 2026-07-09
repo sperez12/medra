@@ -225,6 +225,7 @@ function getEventStatus(date: Date) {
   const diffDays = Math.ceil((eventDate.getTime() - today.getTime()) / 86400000);
 
   if (diffDays < 0) return "overdue";
+  if (diffDays === 0) return "today";
   if (diffDays <= 7) return "this_week";
   return "upcoming";
 }
@@ -280,34 +281,56 @@ function SummaryCard({
 
 function EventItem({ event }: { event: CalendarEvent }) {
   const status = getEventStatus(event.date);
-  const statusStyles = {
-    overdue: "border-red-200 bg-red-50 text-red-800",
-    this_week: "border-amber-200 bg-amber-50 text-amber-900",
-    upcoming: "border-slate-200 bg-white text-slate-700",
+  const typeStyles = {
+    card_cut: {
+      accent: "border-l-blue-500",
+      chip: "border-blue-200 bg-blue-50 text-blue-700",
+    },
+    payment_due: {
+      accent: "border-l-red-500",
+      chip: "border-red-200 bg-red-50 text-red-700",
+    },
+    payment_registered: {
+      accent: "border-l-teal-600",
+      chip: "border-teal-200 bg-teal-50 text-teal-700",
+    },
+    important_expense: {
+      accent: "border-l-slate-500",
+      chip: "border-slate-200 bg-slate-100 text-slate-700",
+    },
+  };
+  const urgencyStyles = {
+    overdue: "border-red-200 bg-red-50 text-red-700",
+    today: "border-red-200 bg-red-50 text-red-700",
+    this_week: "border-amber-200 bg-amber-50 text-amber-800",
+    upcoming: "border-slate-200 bg-slate-50 text-slate-600",
   };
   const statusLabel = {
     overdue: "Vencido",
+    today: "Hoy",
     this_week: "Esta semana",
     upcoming: "Próximo",
   };
 
   return (
-    <article className={`rounded-lg border p-4 ${statusStyles[status]}`}>
+    <article className={`rounded-lg border border-l-4 border-slate-200 bg-white p-4 text-slate-700 shadow-sm ${typeStyles[event.type].accent}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-current px-2 py-0.5 text-xs font-medium">
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${typeStyles[event.type].chip}`}>
               {getEventTypeLabel(event.type)}
             </span>
-            <span className="text-xs font-medium">{statusLabel[status]}</span>
+            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${urgencyStyles[status]}`}>
+              {statusLabel[status]}
+            </span>
           </div>
-          <p className="mt-2 font-semibold">{event.cardName}</p>
-          <p className="text-sm opacity-80">{event.cardDetail}</p>
+          <p className="mt-2 font-semibold text-slate-950">{event.cardName}</p>
+          <p className="text-sm text-slate-500">{event.cardDetail}</p>
           <p className="mt-2 text-sm">{event.description}</p>
         </div>
         <div className="text-left sm:text-right">
-          <p className="font-semibold">{event.date.toLocaleDateString("es-MX")}</p>
-          {event.amount ? <p className="mt-1 text-sm">{formatMoney(event.amount)}</p> : null}
+          <p className="font-semibold text-slate-950">{event.date.toLocaleDateString("es-MX")}</p>
+          {event.amount ? <p className="mt-1 text-sm text-slate-600">{formatMoney(event.amount)}</p> : null}
         </div>
       </div>
     </article>
