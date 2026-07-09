@@ -237,7 +237,7 @@ export function ExpenseManager() {
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar este gasto:\n\n${expense.description || "Sin descripcion"} - ${Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}\n\nEsta accion no se puede deshacer. ¿Seguro que quieres continuar?`
+      `Vas a borrar este gasto:\n\n${expense.description || "Sin descripcion"} - ${Number(expense.amount).toLocaleString("es-MX", { style: "currency", currency: "MXN" })}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
     );
 
     if (!confirmed) {
@@ -472,7 +472,7 @@ export function ExpenseManager() {
         </div>
         {!isLoading && filteredExpenses.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
-            No hay gastos para el periodo seleccionado.
+            No hay gastos para el periodo seleccionado. Registra un gasto para verlo aquí.
           </p>
         ) : null}
       </div>

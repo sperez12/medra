@@ -38,7 +38,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   if (status === "checking") {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">
-        Revisando tu sesion...
+        Revisando tu sesión...
       </div>
     );
   }
@@ -46,7 +46,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   if (status === "missing-config") {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900">
-        Falta configurar Supabase en el archivo .env.local.
+        Falta configurar Supabase en el archivo .env.local. Revisa las instrucciones del README y reinicia la app.
       </div>
     );
   }

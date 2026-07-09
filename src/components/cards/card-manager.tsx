@@ -372,7 +372,7 @@ export function CardManager() {
 
         {!isLoading && cards.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
-            Todavia no hay tarjetas. Crea la primera desde el formulario.
+            Todavía no hay tarjetas. Crea la primera desde el formulario para empezar a ver tu resumen financiero.
           </div>
         ) : null}
         </div>

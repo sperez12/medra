@@ -18,7 +18,7 @@ export function LoginForm() {
     const supabase = createSupabaseBrowserClient();
     if (!supabase) {
       setIsLoading(false);
-      setMessage("Configura Supabase en .env.local antes de iniciar sesion.");
+      setMessage("Falta configurar Supabase. Revisa el archivo .env.local y vuelve a intentar.");
       return;
     }
 
@@ -34,7 +34,7 @@ export function LoginForm() {
     setMessage(
       error
         ? `No se pudo enviar el enlace: ${error.message}`
-        : "Listo. Revisa tu correo para entrar."
+        : "Listo. Revisa tu correo y abre el enlace para entrar."
     );
   }
 
@@ -58,7 +58,7 @@ export function LoginForm() {
       >
         {isLoading ? "Enviando..." : "Enviar enlace de acceso"}
       </button>
-      {message ? <p className="text-sm text-slate-600">{message}</p> : null}
+      {message ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{message}</p> : null}
     </form>
   );
 }

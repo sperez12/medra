@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const sections = [
   { label: "Dashboard", href: "/" },
@@ -16,11 +19,17 @@ const sections = [
 ];
 
 export function SiteNavigation() {
+  const pathname = usePathname();
+
   return (
-    <nav className="flex flex-wrap gap-2">
+    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" aria-label="Navegacion principal">
       {sections.map((section) => (
         <Link
-          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:border-teal-500 hover:text-teal-700"
+          className={`shrink-0 rounded-md border px-3 py-2 text-sm shadow-sm ${
+            isActivePath(pathname, section.href)
+              ? "border-teal-600 bg-teal-50 font-medium text-teal-700"
+              : "border-slate-200 bg-white text-slate-700 hover:border-teal-500 hover:text-teal-700"
+          }`}
           href={section.href}
           key={section.href}
         >
@@ -29,4 +38,9 @@ export function SiteNavigation() {
       ))}
     </nav>
   );
+}
+
+function isActivePath(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname.startsWith(href);
 }

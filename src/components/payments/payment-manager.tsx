@@ -169,7 +169,7 @@ export function PaymentManager() {
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatMoney(Number(payment.amount))}\n\nEsta accion no se puede deshacer. ¿Seguro que quieres continuar?`
+      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatMoney(Number(payment.amount))}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
     );
 
     if (!confirmed) {
@@ -364,7 +364,7 @@ export function PaymentManager() {
 
         {!isLoading && filteredPayments.length === 0 ? (
           <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">
-            No hay pagos para el periodo seleccionado.
+            No hay pagos para el periodo seleccionado. Registra un pago para verlo aquí.
           </p>
         ) : null}
       </div>
