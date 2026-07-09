@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { AppShell } from "@/components/app-shell";
+import { FinancialCalendar } from "@/components/calendar/financial-calendar";
 
-export default function Page() {
-  return <PlaceholderPage title="Calendario" description="Aqui apareceran cortes, pagos, suscripciones y eventos financieros." />;
+export default function CalendarPage() {
+  return (
+    <AppShell>
+      <FinancialCalendar />
+    </AppShell>
+  );
 }
