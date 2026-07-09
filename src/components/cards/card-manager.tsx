@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getCurrentCardPeriod } from "@/lib/periods";
-import type { CreditCard, Expense } from "@/types/finance";
+import type { CreditCard, Expense, Payment } from "@/types/finance";
 
 const emptyForm = {
   name: "",
@@ -26,6 +26,7 @@ export function CardManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
@@ -50,7 +51,11 @@ export function CardManager() {
     }
 
     setIsLoading(true);
-    const [{ data: cardData, error: cardError }, { data: expenseData, error: expenseError }] =
+    const [
+      { data: cardData, error: cardError },
+      { data: expenseData, error: expenseError },
+      { data: paymentData, error: paymentError },
+    ] =
       await Promise.all([
         supabase
           .from("credit_cards")
@@ -58,12 +63,17 @@ export function CardManager() {
           .eq("user_id", userData.user.id)
           .order("created_at", { ascending: false }),
         supabase.from("expenses").select("*").eq("user_id", userData.user.id),
+        supabase.from("payments").select("*").eq("user_id", userData.user.id),
       ]);
 
-    if (cardError || expenseError) {
+    if (cardError || expenseError || paymentError) {
       setMessage({
         type: "error",
-        text: cardError?.message ?? expenseError?.message ?? "No se pudieron cargar tus tarjetas.",
+        text:
+          cardError?.message ??
+          expenseError?.message ??
+          paymentError?.message ??
+          "No se pudieron cargar tus tarjetas.",
       });
       setIsLoading(false);
       return;
@@ -71,6 +81,7 @@ export function CardManager() {
 
     setCards((cardData ?? []) as CreditCard[]);
     setExpenses((expenseData ?? []) as Expense[]);
+    setPayments((paymentData ?? []) as Payment[]);
     setIsLoading(false);
   }
 
@@ -199,6 +210,21 @@ export function CardManager() {
       .reduce((total, expense) => total + Number(expense.amount), 0);
   }
 
+  function getCurrentPeriodPayments(card: CreditCard) {
+    const period = getCurrentCardPeriod(card.statement_cut_day);
+
+    return payments
+      .filter((payment) => {
+        const paymentDate = new Date(`${payment.payment_date}T00:00:00`);
+        return (
+          payment.credit_card_id === card.id &&
+          paymentDate >= period.start &&
+          paymentDate <= period.end
+        );
+      })
+      .reduce((total, payment) => total + Number(payment.amount), 0);
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
       <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
@@ -251,9 +277,11 @@ export function CardManager() {
         {cards.map((card) => {
           const period = getCurrentCardPeriod(card.statement_cut_day);
           const total = getCurrentPeriodTotal(card);
+          const paid = getCurrentPeriodPayments(card);
+          const pending = Math.max(total - paid, 0);
           const limit = Number(card.credit_limit);
-          const available = Math.max(limit - total, 0);
-          const usedPercent = limit > 0 ? Math.min((total / limit) * 100, 100) : 0;
+          const available = Math.max(limit - pending, 0);
+          const usedPercent = limit > 0 ? Math.min((pending / limit) * 100, 100) : 0;
           const daysToCut = getDaysUntilDay(card.statement_cut_day);
           const daysToPayment = getDaysUntilDay(card.payment_due_day);
 
@@ -278,6 +306,12 @@ export function CardManager() {
                 <div className="text-left sm:text-right">
                   <p className="text-sm text-slate-500">Gastado en periodo</p>
                   <p className="text-2xl font-bold text-slate-950">{formatMoney(total, card.currency)}</p>
+                  <p className="text-sm text-slate-500">
+                    Pagado en periodo: {formatMoney(paid, card.currency)}
+                  </p>
+                  <p className="text-sm font-medium text-slate-700">
+                    Saldo pendiente estimado: {formatMoney(pending, card.currency)}
+                  </p>
                   <p className="text-sm text-slate-500">
                     Disponible estimado: {formatMoney(available, card.currency)}
                   </p>

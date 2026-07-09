@@ -65,6 +65,7 @@ create table if not exists public.payments (
   account_id uuid references public.accounts(id) on delete set null,
   payment_date date not null,
   amount numeric(14, 2) not null check (amount >= 0),
+  payment_type text not null default 'other' check (payment_type in ('minimum', 'partial', 'no_interest', 'total', 'other')),
   notes text,
   created_at timestamptz not null default now()
 );
@@ -190,5 +191,7 @@ create index if not exists expenses_user_id_idx on public.expenses(user_id);
 create index if not exists expenses_credit_card_id_idx on public.expenses(credit_card_id);
 create index if not exists expenses_expense_date_idx on public.expenses(expense_date);
 create index if not exists payments_user_id_idx on public.payments(user_id);
+create index if not exists payments_credit_card_id_idx on public.payments(credit_card_id);
+create index if not exists payments_payment_date_idx on public.payments(payment_date);
 create index if not exists account_movements_user_id_idx on public.account_movements(user_id);
 create index if not exists financial_events_user_id_idx on public.financial_events(user_id);

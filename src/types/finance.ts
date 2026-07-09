@@ -27,6 +27,20 @@ export type Expense = {
   created_at: string;
 };
 
+export type PaymentType = "minimum" | "partial" | "no_interest" | "total" | "other";
+
+export type Payment = {
+  id: string;
+  user_id: string;
+  credit_card_id: string | null;
+  account_id: string | null;
+  payment_date: string;
+  amount: number;
+  payment_type: PaymentType;
+  notes: string | null;
+  created_at: string;
+};
+
 export type Category = {
   id: string;
   user_id: string;
