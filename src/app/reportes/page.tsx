@@ -1,5 +1,10 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { AppShell } from "@/components/app-shell";
+import { BasicReports } from "@/components/reports/basic-reports";
 
-export default function Page() {
-  return <PlaceholderPage title="Reportes" description="Aqui se mostraran reportes de gasto, patrimonio y tendencias." />;
+export default function ReportsPage() {
+  return (
+    <AppShell>
+      <BasicReports />
+    </AppShell>
+  );
 }
