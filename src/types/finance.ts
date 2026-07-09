@@ -70,6 +70,7 @@ export type AccountMovement = {
   id: string;
   user_id: string;
   account_id: string;
+  payment_id: string | null;
   movement_date: string;
   amount: number;
   movement_type: AccountMovementType;

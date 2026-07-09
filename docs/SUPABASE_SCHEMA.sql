@@ -89,6 +89,7 @@ create table if not exists public.account_movements (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   account_id uuid not null references public.accounts(id) on delete cascade,
+  payment_id uuid references public.payments(id) on delete cascade,
   movement_date date not null,
   amount numeric(14, 2) not null,
   movement_type text not null check (movement_type in ('income', 'expense', 'transfer', 'adjustment')),
@@ -195,4 +196,5 @@ create index if not exists payments_user_id_idx on public.payments(user_id);
 create index if not exists payments_credit_card_id_idx on public.payments(credit_card_id);
 create index if not exists payments_payment_date_idx on public.payments(payment_date);
 create index if not exists account_movements_user_id_idx on public.account_movements(user_id);
+create index if not exists account_movements_payment_id_idx on public.account_movements(payment_id);
 create index if not exists financial_events_user_id_idx on public.financial_events(user_id);

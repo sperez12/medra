@@ -9,10 +9,10 @@ import {
   type PeriodFilterState,
 } from "@/lib/period-filters";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { CreditCard, Payment, PaymentType } from "@/types/finance";
+import type { Account, CreditCard, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
-  minimum: "Pago minimo",
+  minimum: "Pago mínimo",
   partial: "Pago parcial",
   no_interest: "Pago para no generar intereses",
   total: "Pago total",
@@ -21,6 +21,7 @@ const paymentTypeLabels: Record<PaymentType, string> = {
 
 const emptyForm = {
   credit_card_id: "",
+  account_id: "",
   payment_date: new Date().toISOString().slice(0, 10),
   amount: "0",
   payment_type: "partial" as PaymentType,
@@ -35,6 +36,7 @@ type Message = {
 export function PaymentManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
@@ -55,37 +57,47 @@ export function PaymentManager() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "info", text: "Inicia sesion para ver tus pagos." });
+      setMessage({ type: "info", text: "Inicia sesión para ver tus pagos." });
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    const [{ data: cardData, error: cardError }, { data: paymentData, error: paymentError }] =
-      await Promise.all([
-        supabase
-          .from("credit_cards")
-          .select("*")
-          .eq("user_id", userData.user.id)
-          .eq("is_active", true)
-          .order("name"),
-        supabase
+    const [
+      { data: cardData, error: cardError },
+      { data: accountData, error: accountError },
+      { data: paymentData, error: paymentError },
+    ] = await Promise.all([
+      supabase
+        .from("credit_cards")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .eq("is_active", true)
+        .order("name"),
+      supabase
+        .from("accounts")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .eq("is_active", true)
+        .order("name"),
+      supabase
         .from("payments")
         .select("*")
         .eq("user_id", userData.user.id)
-          .order("payment_date", { ascending: false }),
-      ]);
+        .order("payment_date", { ascending: false }),
+    ]);
 
-    if (cardError || paymentError) {
+    if (cardError || accountError || paymentError) {
       setMessage({
         type: "error",
-        text: cardError?.message ?? paymentError?.message ?? "No se pudieron cargar los pagos.",
+        text: cardError?.message ?? accountError?.message ?? paymentError?.message ?? "No se pudieron cargar los pagos.",
       });
       setIsLoading(false);
       return;
     }
 
     setCards((cardData ?? []) as CreditCard[]);
+    setAccounts((accountData ?? []) as Account[]);
     setPayments((paymentData ?? []) as Payment[]);
     setIsLoading(false);
   }
@@ -101,7 +113,7 @@ export function PaymentManager() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesion para guardar pagos." });
+      setMessage({ type: "error", text: "Primero inicia sesión para guardar pagos." });
       return;
     }
 
@@ -114,28 +126,35 @@ export function PaymentManager() {
     const payload = {
       user_id: userData.user.id,
       credit_card_id: form.credit_card_id,
-      account_id: null,
+      account_id: form.account_id || null,
       payment_date: form.payment_date,
       amount: Number(form.amount),
       payment_type: form.payment_type,
       notes: form.notes.trim() || null,
     };
 
-    const request = editingPaymentId
-      ? supabase
+    const { data: savedPayment, error } = editingPaymentId
+      ? await supabase
           .from("payments")
           .update(payload)
           .eq("id", editingPaymentId)
           .eq("user_id", userData.user.id)
-      : supabase.from("payments").insert(payload);
+          .select("*")
+          .single()
+      : await supabase.from("payments").insert(payload).select("*").single();
 
-    const { error } = await request;
-    if (error) {
-      setMessage({ type: "error", text: getFriendlyPaymentError(error.message) });
+    if (error || !savedPayment) {
+      setMessage({ type: "error", text: getFriendlyPaymentError(error?.message ?? "No se pudo guardar el pago.") });
       return;
     }
 
-    setForm({ ...emptyForm, credit_card_id: form.credit_card_id });
+    const movementError = await syncAutomaticAccountMovement(savedPayment as Payment, userData.user.id);
+    if (movementError) {
+      setMessage({ type: "error", text: movementError });
+      return;
+    }
+
+    setForm({ ...emptyForm, credit_card_id: form.credit_card_id, account_id: form.account_id });
     setEditingPaymentId(null);
     setMessage({
       type: "success",
@@ -148,6 +167,7 @@ export function PaymentManager() {
     setEditingPaymentId(payment.id);
     setForm({
       credit_card_id: payment.credit_card_id ?? "",
+      account_id: payment.account_id ?? "",
       payment_date: payment.payment_date,
       amount: String(payment.amount),
       payment_type: payment.payment_type,
@@ -159,7 +179,7 @@ export function PaymentManager() {
   function cancelEdit() {
     setEditingPaymentId(null);
     setForm(emptyForm);
-    setMessage({ type: "info", text: "Edicion cancelada." });
+    setMessage({ type: "info", text: "Edición cancelada." });
   }
 
   async function deletePayment(payment: Payment) {
@@ -169,17 +189,28 @@ export function PaymentManager() {
     }
 
     const confirmed = window.confirm(
-      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatMoney(Number(payment.amount))}\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
+      `Vas a borrar este pago:\n\n${getCardName(payment.credit_card_id)} - ${formatMoney(Number(payment.amount))}\n\nSi el pago creó un movimiento en una cuenta, ese movimiento también se borrará.\n\nEsta acción no se puede deshacer. ¿Seguro que quieres continuar?`
     );
 
     if (!confirmed) {
-      setMessage({ type: "info", text: "No se borro el pago." });
+      setMessage({ type: "info", text: "No se borró el pago." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesion para borrar pagos." });
+      setMessage({ type: "error", text: "Primero inicia sesión para borrar pagos." });
+      return;
+    }
+
+    const { error: movementError } = await supabase
+      .from("account_movements")
+      .delete()
+      .eq("payment_id", payment.id)
+      .eq("user_id", userData.user.id);
+
+    if (movementError) {
+      setMessage({ type: "error", text: getFriendlyPaymentError(movementError.message) });
       return;
     }
 
@@ -203,8 +234,55 @@ export function PaymentManager() {
     await loadData();
   }
 
+  async function syncAutomaticAccountMovement(payment: Payment, userId: string) {
+    if (!supabase) return "Falta configurar Supabase.";
+
+    if (!payment.account_id) {
+      const { error } = await supabase
+        .from("account_movements")
+        .delete()
+        .eq("payment_id", payment.id)
+        .eq("user_id", userId);
+
+      return error ? getFriendlyPaymentError(error.message) : "";
+    }
+
+    const movementPayload = {
+      user_id: userId,
+      account_id: payment.account_id,
+      payment_id: payment.id,
+      movement_date: payment.payment_date,
+      movement_type: "expense",
+      amount: Number(payment.amount),
+      description: `Pago de tarjeta ${getCardName(payment.credit_card_id)}`,
+    };
+
+    const { data: existingMovement, error: findError } = await supabase
+      .from("account_movements")
+      .select("id")
+      .eq("payment_id", payment.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (findError) return getFriendlyPaymentError(findError.message);
+
+    const { error } = existingMovement
+      ? await supabase
+          .from("account_movements")
+          .update(movementPayload)
+          .eq("id", existingMovement.id)
+          .eq("user_id", userId)
+      : await supabase.from("account_movements").insert(movementPayload);
+
+    return error ? getFriendlyPaymentError(error.message) : "";
+  }
+
   function getCardName(cardId: string | null) {
     return cards.find((card) => card.id === cardId)?.name ?? "Tarjeta no encontrada";
+  }
+
+  function getAccountName(accountId: string | null) {
+    return accounts.find((account) => account.id === accountId)?.name ?? "Sin cuenta";
   }
 
   const filteredPayments = payments.filter((payment) =>
@@ -236,6 +314,22 @@ export function PaymentManager() {
               {cards.map((card) => (
                 <option key={card.id} value={card.id}>
                   {card.name} - {card.bank}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Cuenta de origen opcional</span>
+            <select
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              onChange={(event) => setForm({ ...form, account_id: event.target.value })}
+              value={form.account_id}
+            >
+              <option value="">Sin cuenta de origen</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} - {account.currency}
                 </option>
               ))}
             </select>
@@ -281,7 +375,7 @@ export function PaymentManager() {
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Descripcion opcional</span>
+            <span className="text-sm font-medium text-slate-700">Descripción opcional</span>
             <input
               className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
               onChange={(event) => setForm({ ...form, notes: event.target.value })}
@@ -300,7 +394,7 @@ export function PaymentManager() {
             onClick={cancelEdit}
             type="button"
           >
-            Cancelar edicion
+            Cancelar edición
           </button>
         ) : null}
         {message ? <StatusMessage message={message} /> : null}
@@ -317,13 +411,14 @@ export function PaymentManager() {
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando pagos...</p> : null}
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[980px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">
                 <th className="py-2 pr-4 font-medium">Fecha</th>
                 <th className="py-2 pr-4 font-medium">Tarjeta</th>
+                <th className="py-2 pr-4 font-medium">Cuenta origen</th>
                 <th className="py-2 pr-4 font-medium">Tipo</th>
-                <th className="py-2 pr-4 font-medium">Descripcion</th>
+                <th className="py-2 pr-4 font-medium">Descripción</th>
                 <th className="py-2 text-right font-medium">Monto</th>
                 <th className="py-2 pl-4 text-right font-medium">Acciones</th>
               </tr>
@@ -335,8 +430,9 @@ export function PaymentManager() {
                     {new Date(`${payment.payment_date}T00:00:00`).toLocaleDateString("es-MX")}
                   </td>
                   <td className="py-3 pr-4 text-slate-700">{getCardName(payment.credit_card_id)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{getAccountName(payment.account_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
-                  <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
+                  <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripción"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">{formatMoney(Number(payment.amount))}</td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">
@@ -386,18 +482,22 @@ function formatMoney(amount: number) {
 
 function getFriendlyPaymentError(error: string) {
   if (error.includes("payment_type")) {
-    return "El tipo de pago no es valido. Revisa la opcion seleccionada.";
+    return "El tipo de pago no es válido. Revisa la opción seleccionada.";
   }
 
   if (error.includes("credit_card_id")) {
-    return "Selecciona una tarjeta valida.";
+    return "Selecciona una tarjeta válida.";
+  }
+
+  if (error.includes("payment_id")) {
+    return "Falta actualizar Supabase. Ejecuta el SQL docs/ADD_PAYMENT_ACCOUNT_LINK.sql.";
   }
 
   if (error.includes("column") && error.includes("payment_type")) {
     return "Falta actualizar Supabase. Ejecuta el SQL docs/ADD_CARD_PAYMENTS.sql.";
   }
 
-  return `No se pudo completar la accion. Detalle: ${error}`;
+  return `No se pudo completar la acción. Detalle: ${error}`;
 }
 
 function StatusMessage({ message }: { message: Message }) {
