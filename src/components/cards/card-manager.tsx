@@ -267,7 +267,7 @@ export function CardManager() {
         {message ? <StatusMessage message={message} /> : null}
       </form>
 
-      <div className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-2">
         {isLoading ? (
           <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">
             Cargando tarjetas...
@@ -284,49 +284,69 @@ export function CardManager() {
           const usedPercent = limit > 0 ? Math.min((pending / limit) * 100, 100) : 0;
           const daysToCut = getDaysUntilDay(card.statement_cut_day);
           const daysToPayment = getDaysUntilDay(card.payment_due_day);
+          const usageStatus = getUsageStatus(usedPercent);
+          const cutStatus = getDateStatus(daysToCut);
+          const paymentStatus = getDateStatus(daysToPayment);
 
           return (
             <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={card.id}>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="h-3 w-3 rounded-full" style={{ background: card.color ?? "#0d9488" }} />
-                    <h3 className="text-lg font-semibold text-slate-950">{card.name}</h3>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ background: card.color ?? "#0d9488" }} />
+                      <h3 className="text-lg font-semibold text-slate-950">{card.name}</h3>
+                    </div>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {card.bank} - **** {card.last_four_digits}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Limite: {formatMoney(limit, card.currency)}
+                    </p>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {card.bank} - **** {card.last_four_digits} - {card.currency}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Periodo actual: {period.start.toLocaleDateString("es-MX")} a {period.end.toLocaleDateString("es-MX")}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-600">
-                    Corte: dia {card.statement_cut_day} ({daysToCut} dia(s)). Pago: dia {card.payment_due_day} ({daysToPayment} dia(s)).
+                  <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Metric label="Gasto del periodo" value={formatMoney(total, card.currency)} />
+                  <Metric label="Pagos del periodo" value={formatMoney(paid, card.currency)} />
+                  <Metric label="Saldo pendiente estimado" value={formatMoney(pending, card.currency)} strong />
+                  <Metric label="Disponible estimado" value={formatMoney(available, card.currency)} />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Uso del limite</span>
+                    <span>{usedPercent.toFixed(1)}%</span>
+                  </div>
+                  <div className="mt-2 h-2 rounded-full bg-slate-100">
+                    <div className={`h-2 rounded-full ${usageStatus.barClass}`} style={{ width: `${usedPercent}%` }} />
+                  </div>
+                </div>
+
+                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                  <p className="font-medium text-slate-700">Periodo actual</p>
+                  <p className="mt-1">
+                    {period.start.toLocaleDateString("es-MX")} a {period.end.toLocaleDateString("es-MX")}
                   </p>
                 </div>
-                <div className="text-left sm:text-right">
-                  <p className="text-sm text-slate-500">Gastado en periodo</p>
-                  <p className="text-2xl font-bold text-slate-950">{formatMoney(total, card.currency)}</p>
-                  <p className="text-sm text-slate-500">
-                    Pagado en periodo: {formatMoney(paid, card.currency)}
-                  </p>
-                  <p className="text-sm font-medium text-slate-700">
-                    Saldo pendiente estimado: {formatMoney(pending, card.currency)}
-                  </p>
-                  <p className="text-sm text-slate-500">
-                    Disponible estimado: {formatMoney(available, card.currency)}
-                  </p>
-                  <p className="text-sm text-slate-500">Limite: {formatMoney(limit, card.currency)}</p>
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <StatusBox
+                    label="Corte"
+                    text={`${daysToCut} dia(s) restantes`}
+                    tone={cutStatus.tone}
+                    detail={`Dia ${card.statement_cut_day}`}
+                  />
+                  <StatusBox
+                    label="Fecha limite de pago"
+                    text={`${daysToPayment} dia(s) restantes`}
+                    tone={paymentStatus.tone}
+                    detail={`Dia ${card.payment_due_day}`}
+                  />
                 </div>
               </div>
-              <div className="mt-4">
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>Uso del limite</span>
-                  <span>{usedPercent.toFixed(1)}%</span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-teal-600" style={{ width: `${usedPercent}%` }} />
-                </div>
-              </div>
+
               <div className="mt-4 flex gap-2">
                 <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => startEdit(card)} type="button">
                   Editar
@@ -424,9 +444,96 @@ function formatMoney(amount: number, currency: string) {
   }
 }
 
+function getUsageStatus(percent: number) {
+  if (percent >= 80) {
+    return {
+      label: "Uso alto",
+      tone: "danger" as const,
+      barClass: "bg-red-500",
+    };
+  }
+
+  if (percent >= 50) {
+    return {
+      label: "Uso normal",
+      tone: "warning" as const,
+      barClass: "bg-amber-500",
+    };
+  }
+
+  return {
+    label: "Uso bajo",
+    tone: "success" as const,
+    barClass: "bg-teal-600",
+  };
+}
+
+function getDateStatus(days: number) {
+  if (days <= 3) return { tone: "danger" as const };
+  if (days <= 7) return { tone: "warning" as const };
+  return { tone: "success" as const };
+}
+
 function getFriendlyCardError(error: string) {
   if (error.includes("last_four_digits")) return "Revisa los ultimos 4 digitos de la tarjeta.";
   return `No se pudo completar la accion. Detalle: ${error}`;
+}
+
+function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className={`mt-1 text-base ${strong ? "font-bold text-slate-950" : "font-semibold text-slate-800"}`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "success" | "warning" | "danger";
+}) {
+  const styles = {
+    success: "bg-teal-50 text-teal-700 border-teal-200",
+    warning: "bg-amber-50 text-amber-800 border-amber-200",
+    danger: "bg-red-50 text-red-700 border-red-200",
+  };
+
+  return (
+    <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${styles[tone]}`}>
+      {label}
+    </span>
+  );
+}
+
+function StatusBox({
+  label,
+  text,
+  detail,
+  tone,
+}: {
+  label: string;
+  text: string;
+  detail: string;
+  tone: "success" | "warning" | "danger";
+}) {
+  const styles = {
+    success: "border-slate-200 bg-white text-slate-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-900",
+    danger: "border-red-200 bg-red-50 text-red-800",
+  };
+
+  return (
+    <div className={`rounded-md border p-3 ${styles[tone]}`}>
+      <p className="text-xs font-medium uppercase">{label}</p>
+      <p className="mt-1 text-sm font-semibold">{text}</p>
+      <p className="text-xs opacity-80">{detail}</p>
+    </div>
+  );
 }
 
 function StatusMessage({ message }: { message: Message }) {
