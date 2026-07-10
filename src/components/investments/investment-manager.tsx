@@ -36,6 +36,9 @@ const assetTypeLabels: Record<InvestmentAssetType, string> = {
 const priceSourceLabels: Record<InvestmentPriceSource, string> = {
   manual: "Manual",
   coingecko: "CoinGecko",
+  coinmarketcap: "CoinMarketCap (despues)",
+  alpha_vantage: "Alpha Vantage (despues)",
+  twelve_data: "Twelve Data (despues)",
 };
 
 const transactionTypeLabels: Record<InvestmentTransactionType, string> = {
@@ -220,6 +223,9 @@ export function InvestmentManager() {
       current_price: Number(assetForm.current_price),
       price_source: assetForm.asset_type === "crypto" ? assetForm.price_source : "manual",
       coingecko_id: assetForm.asset_type === "crypto" && assetForm.price_source === "coingecko" ? assetForm.coingecko_id.trim().toLowerCase() : null,
+      price_provider: assetForm.asset_type === "crypto" ? assetForm.price_source : "manual",
+      provider_asset_id: assetForm.asset_type === "crypto" && assetForm.price_source === "coingecko" ? assetForm.coingecko_id.trim().toLowerCase() : null,
+      provider_symbol: assetForm.symbol.trim().toUpperCase(),
       description: assetForm.description.trim() || null,
       is_active: assetForm.is_active,
     };
@@ -314,7 +320,7 @@ export function InvestmentManager() {
 
     setIsUpdatingCryptoPrices(true);
     try {
-      const response = await fetch("/api/crypto-prices", {
+      const response = await fetch("/api/prices/update", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -472,7 +478,7 @@ export function InvestmentManager() {
       currency: normalizeCurrency(asset.currency),
       current_price: String(asset.current_price),
       price_source: asset.price_source ?? "manual",
-      coingecko_id: asset.coingecko_id ?? "",
+      coingecko_id: asset.provider_asset_id ?? asset.coingecko_id ?? "",
       description: asset.description ?? "",
       is_active: asset.is_active,
     });
@@ -566,8 +572,11 @@ function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
         {form.asset_type === "crypto" ? (
           <>
             <SelectInput label="Fuente de precio" value={form.price_source} onChange={(value) => onChange({ ...form, price_source: value as InvestmentPriceSource })}>
-              {Object.entries(priceSourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {(["manual", "coingecko"] as InvestmentPriceSource[]).map((value) => <option key={value} value={value}>{priceSourceLabels[value]}</option>)}
             </SelectInput>
+            <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+              Preparado para CoinMarketCap, Alpha Vantage y Twelve Data, pero en esta fase solo CoinGecko esta activo para cripto.
+            </p>
             {form.price_source === "coingecko" ? (
               <div className="space-y-2">
                 <TextInput label="CoinGecko ID" placeholder="bitcoin, ethereum, solana..." value={form.coingecko_id} onChange={(value) => onChange({ ...form, coingecko_id: value })} />
@@ -859,7 +868,7 @@ function formatDateTime(dateValue: string) {
 
 function getPriceSourceLabel(asset: InvestmentAsset | undefined) {
   if (!asset) return "Sin dato";
-  if (asset.asset_type === "crypto" && asset.price_source === "coingecko") return "CoinGecko";
+  if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "CoinGecko";
   return "Manual";
 }
 

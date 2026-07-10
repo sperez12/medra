@@ -122,6 +122,10 @@ Campos:
 - `current_price`
 - `price_source`
 - `coingecko_id`
+- `price_provider`
+- `provider_asset_id`
+- `provider_symbol`
+- `last_price_error`
 - `last_price_updated_at`
 - `description`
 - `is_active`
