@@ -45,6 +45,9 @@ type GoalSummary = {
   remaining: number;
   progressPercent: number;
   isCompleted: boolean;
+  daysUntilTarget: number | null;
+  isNearTargetDate: boolean;
+  isOverdue: boolean;
 };
 
 export function GoalManager() {
@@ -108,13 +111,13 @@ export function GoalManager() {
     setMessage(null);
 
     if (!supabase) {
-      setMessage({ type: "error", text: "Falta configurar Supabase antes de guardar metas." });
+      setMessage({ type: "error", text: "Falta conectar Supabase antes de guardar metas. Revisa tu archivo .env.local." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesion para guardar metas." });
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar tu meta." });
       return;
     }
 
@@ -144,13 +147,13 @@ export function GoalManager() {
 
     const { error } = await request;
     if (error) {
-      setMessage({ type: "error", text: getFriendlyGoalError(error.message) });
+      setMessage({ type: "error", text: getFriendlyGoalError(error.message, "No pude guardar la meta.") });
       return;
     }
 
     setGoalForm(emptyGoalForm);
     setEditingGoalId(null);
-    setMessage({ type: "success", text: editingGoalId ? "Meta actualizada correctamente." : "Meta creada correctamente." });
+    setMessage({ type: "success", text: editingGoalId ? "Meta actualizada. El resumen ya usa los nuevos datos." : "Meta creada. Ya puedes registrar aportaciones cuando quieras." });
     await loadData();
   }
 
@@ -159,13 +162,13 @@ export function GoalManager() {
     setMessage(null);
 
     if (!supabase) {
-      setMessage({ type: "error", text: "Falta configurar Supabase antes de guardar aportaciones." });
+      setMessage({ type: "error", text: "Falta conectar Supabase antes de guardar aportaciones. Revisa tu archivo .env.local." });
       return;
     }
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "error", text: "Primero inicia sesion para guardar aportaciones." });
+      setMessage({ type: "error", text: "Primero inicia sesion para registrar aportaciones." });
       return;
     }
 
@@ -195,7 +198,7 @@ export function GoalManager() {
       : await supabase.from("goal_contributions").insert(payload).select("*").single();
 
     if (error || !savedContribution) {
-      setMessage({ type: "error", text: getFriendlyGoalError(error?.message ?? "No se pudo guardar la aportacion.") });
+      setMessage({ type: "error", text: getFriendlyGoalError(error?.message ?? "No se pudo guardar la aportacion.", "No pude guardar la aportacion.") });
       return;
     }
 
@@ -212,7 +215,9 @@ export function GoalManager() {
     setEditingContributionId(null);
     setMessage({
       type: "success",
-      text: editingContributionId ? "Aportacion actualizada correctamente." : "Aportacion registrada correctamente.",
+      text: editingContributionId
+        ? "Aportacion actualizada. El avance de la meta y el movimiento de cuenta quedaron sincronizados."
+        : "Aportacion registrada. El avance de la meta ya fue actualizado.",
     });
     await loadData();
   }
@@ -227,7 +232,7 @@ export function GoalManager() {
         .eq("goal_contribution_id", contribution.id)
         .eq("user_id", userId);
 
-      return error ? getFriendlyGoalError(error.message) : "";
+      return error ? getFriendlyGoalError(error.message, "No pude quitar el movimiento de cuenta asociado a esta aportacion.") : "";
     }
 
     const goal = goals.find((item) => item.id === contribution.goal_id);
@@ -248,13 +253,13 @@ export function GoalManager() {
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (findError) return getFriendlyGoalError(findError.message);
+    if (findError) return getFriendlyGoalError(findError.message, "No pude revisar el movimiento de cuenta asociado a esta aportacion.");
 
     const { error } = existingMovement
       ? await supabase.from("account_movements").update(payload).eq("id", existingMovement.id).eq("user_id", userId)
       : await supabase.from("account_movements").insert(payload);
 
-    return error ? getFriendlyGoalError(error.message) : "";
+    return error ? getFriendlyGoalError(error.message, "No pude sincronizar el movimiento de cuenta de esta aportacion.") : "";
   }
 
   function startEditGoal(goal: Goal) {
@@ -300,7 +305,7 @@ export function GoalManager() {
   async function deleteGoal(goal: Goal) {
     if (!supabase) return;
 
-    const confirmed = window.confirm(`Vas a borrar la meta "${goal.name}". Tambien se borraran sus aportaciones.\n\n¿Seguro que quieres continuar?`);
+    const confirmed = window.confirm(`Vas a borrar la meta "${goal.name}". Tambien se borraran sus aportaciones y movimientos automaticos relacionados.\n\nSeguro que quieres continuar?`);
     if (!confirmed) {
       setMessage({ type: "info", text: "No se borro la meta." });
       return;
@@ -321,25 +326,25 @@ export function GoalManager() {
         .eq("user_id", userData.user.id);
 
       if (movementError) {
-        setMessage({ type: "error", text: getFriendlyGoalError(movementError.message) });
+        setMessage({ type: "error", text: getFriendlyGoalError(movementError.message, "No pude borrar los movimientos de cuenta relacionados con esta meta.") });
         return;
       }
     }
 
     const { error } = await supabase.from("goals").delete().eq("id", goal.id).eq("user_id", userData.user.id);
     if (error) {
-      setMessage({ type: "error", text: getFriendlyGoalError(error.message) });
+      setMessage({ type: "error", text: getFriendlyGoalError(error.message, "No pude borrar la meta.") });
       return;
     }
 
-    setMessage({ type: "success", text: "Meta borrada correctamente." });
+    setMessage({ type: "success", text: "Meta borrada. Tambien se quitaron sus aportaciones y movimientos relacionados." });
     await loadData();
   }
 
   async function deleteContribution(contribution: GoalContribution) {
     if (!supabase) return;
 
-    const confirmed = window.confirm(`Vas a borrar esta aportacion de ${formatCurrency(Number(contribution.amount), getGoalCurrency(goals, contribution.goal_id))}.\n\n¿Seguro que quieres continuar?`);
+    const confirmed = window.confirm(`Vas a borrar esta aportacion de ${formatCurrency(Number(contribution.amount), getGoalCurrency(goals, contribution.goal_id))}. Si tenia cuenta origen, tambien se borrara su movimiento.\n\nSeguro que quieres continuar?`);
     if (!confirmed) {
       setMessage({ type: "info", text: "No se borro la aportacion." });
       return;
@@ -358,28 +363,24 @@ export function GoalManager() {
       .eq("user_id", userData.user.id);
 
     if (movementError) {
-      setMessage({ type: "error", text: getFriendlyGoalError(movementError.message) });
+      setMessage({ type: "error", text: getFriendlyGoalError(movementError.message, "No pude borrar el movimiento de cuenta relacionado con esta aportacion.") });
       return;
     }
 
     const { error } = await supabase.from("goal_contributions").delete().eq("id", contribution.id).eq("user_id", userData.user.id);
     if (error) {
-      setMessage({ type: "error", text: getFriendlyGoalError(error.message) });
+      setMessage({ type: "error", text: getFriendlyGoalError(error.message, "No pude borrar la aportacion.") });
       return;
     }
 
-    setMessage({ type: "success", text: "Aportacion borrada correctamente." });
+    setMessage({ type: "success", text: "Aportacion borrada. El avance de la meta ya fue recalculado." });
     await loadData();
   }
 
   const goalSummaries = goals.map((goal) => buildGoalSummary(goal, contributions));
   const activeGoals = goalSummaries.filter(({ goal }) => goal.is_active);
   const completedGoals = goalSummaries.filter((summary) => summary.isCompleted);
-  const nearTargetDate = activeGoals.filter(({ goal }) => {
-    if (!goal.target_date) return false;
-    const diffDays = Math.ceil((new Date(`${goal.target_date}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86400000);
-    return diffDays >= 0 && diffDays <= 30;
-  });
+  const nearTargetDate = activeGoals.filter((summary) => summary.isNearTargetDate);
   const targetByCurrency = groupMoneyByCurrency(activeGoals, (summary) => Number(summary.goal.target_amount), (summary) => summary.goal.currency);
   const currentByCurrency = groupMoneyByCurrency(activeGoals, (summary) => summary.currentAmount, (summary) => summary.goal.currency);
   const remainingByCurrency = buildRemainingTotals(targetByCurrency, currentByCurrency);
@@ -413,13 +414,14 @@ export function GoalManager() {
 
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-950">Metas registradas</h2>
+          <p className="mt-1 text-sm text-slate-500">Cada meta muestra avance, restante y alertas de fecha por separado.</p>
           {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando metas...</p> : null}
           <div className="mt-4 grid gap-4">
             {goalSummaries.map((summary) => (
               <GoalCard accounts={accounts} key={summary.goal.id} onDelete={deleteGoal} onEdit={startEditGoal} summary={summary} />
             ))}
           </div>
-          {!isLoading && goalSummaries.length === 0 ? <EmptyMessage text="Todavia no hay metas. Crea una para empezar a medir tu avance." /> : null}
+          {!isLoading && goalSummaries.length === 0 ? <EmptyMessage text="Todavia no hay metas. Empieza con una meta sencilla, por ejemplo fondo de emergencia, viaje o pago de deuda." /> : null}
         </div>
       </section>
 
@@ -516,11 +518,25 @@ function ContributionForm({
   onChange: (form: typeof emptyContributionForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const selectedGoal = goals.find((goal) => goal.id === form.goal_id);
+  const compatibleAccounts = selectedGoal
+    ? accounts.filter((account) => normalizeCurrency(account.currency) === normalizeCurrency(selectedGoal.currency))
+    : accounts;
+
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingContributionId ? "Editar aportacion" : "Nueva aportacion"}</h2>
       <div className="mt-4 grid gap-4">
-        <SelectInput label="Meta" value={form.goal_id} onChange={(value) => onChange({ ...form, goal_id: value })}>
+        <SelectInput
+          label="Meta"
+          value={form.goal_id}
+          onChange={(value) => {
+            const nextGoal = goals.find((goal) => goal.id === value);
+            const currentAccount = accounts.find((account) => account.id === form.account_id);
+            const keepAccount = nextGoal && currentAccount && normalizeCurrency(nextGoal.currency) === normalizeCurrency(currentAccount.currency);
+            onChange({ ...form, goal_id: value, account_id: keepAccount ? form.account_id : "" });
+          }}
+        >
           <option value="">Selecciona una meta</option>
           {goals.map((goal) => (
             <option key={goal.id} value={goal.id}>{goal.name} - {goal.currency}</option>
@@ -528,7 +544,12 @@ function ContributionForm({
         </SelectInput>
         <TextInput label="Fecha" type="date" value={form.contribution_date} onChange={(value) => onChange({ ...form, contribution_date: value })} />
         <TextInput label="Monto" min="0.01" step="0.01" type="number" value={form.amount} onChange={(value) => onChange({ ...form, amount: value })} />
-        <AccountSelect accounts={accounts} label="Cuenta origen opcional" value={form.account_id} onChange={(value) => onChange({ ...form, account_id: value })} />
+        <AccountSelect accounts={compatibleAccounts} label="Cuenta origen opcional" value={form.account_id} onChange={(value) => onChange({ ...form, account_id: value })} />
+        {selectedGoal && compatibleAccounts.length === 0 ? (
+          <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+            No tienes cuentas activas en {selectedGoal.currency}. Puedes guardar la aportacion sin cuenta origen, o crear una cuenta de esa moneda en Cuentas.
+          </p>
+        ) : null}
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
       </div>
       <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
@@ -544,7 +565,7 @@ function ContributionForm({
 }
 
 function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]; summary: GoalSummary; onEdit: (goal: Goal) => void; onDelete: (goal: Goal) => void }) {
-  const { goal, currentAmount, remaining, progressPercent, isCompleted } = summary;
+  const { goal, currentAmount, remaining, progressPercent, isCompleted, daysUntilTarget, isNearTargetDate, isOverdue } = summary;
 
   return (
     <article className="rounded-lg border border-slate-200 p-4">
@@ -553,19 +574,29 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
           <h3 className="font-semibold text-slate-950">{goal.name}</h3>
           <p className="text-sm text-slate-500">{goalTypeLabels[goal.goal_type]} - {goal.currency}</p>
           <p className="mt-1 text-sm text-slate-500">Cuenta: {getAccountName(accounts, goal.account_id)}</p>
-          {goal.target_date ? <p className="text-sm text-slate-500">Fecha objetivo: {formatDate(goal.target_date)}</p> : null}
+          {goal.target_date ? (
+            <p className="text-sm text-slate-500">
+              Fecha objetivo: {formatDate(goal.target_date)} {daysUntilTarget !== null ? `(${formatTargetDays(daysUntilTarget)})` : ""}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-500">Sin fecha objetivo</p>
+          )}
           {goal.description ? <p className="mt-2 text-sm text-slate-600">{goal.description}</p> : null}
         </div>
-        <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${goal.is_active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-          {goal.is_active ? "Activa" : "Inactiva"}
-        </span>
+        <div className="flex flex-wrap gap-2 md:justify-end">
+          <StatusChip tone={goal.is_active ? "green" : "slate"} text={goal.is_active ? "Activa" : "Inactiva"} />
+          {isCompleted ? <StatusChip tone="green" text="Completada" /> : null}
+          {!isCompleted && isOverdue ? <StatusChip tone="red" text="Fecha vencida" /> : null}
+          {!isCompleted && isNearTargetDate ? <StatusChip tone="amber" text="Cerca de fecha objetivo" /> : null}
+        </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-5">
         <Metric label="Objetivo" value={formatCurrency(Number(goal.target_amount), goal.currency)} />
         <Metric label="Actual" value={formatCurrency(currentAmount, goal.currency)} />
         <Metric label="Restante" value={formatCurrency(remaining, goal.currency)} />
         <Metric label="Avance" value={`${progressPercent.toFixed(1)}%`} />
+        <Metric label="Tiempo" value={daysUntilTarget === null ? "Sin fecha" : formatTargetDays(daysUntilTarget)} />
       </div>
 
       <div className="mt-4 h-2 rounded-full bg-slate-100">
@@ -650,6 +681,7 @@ function buildGoalSummary(goal: Goal, contributions: GoalContribution[]): GoalSu
   const currentAmount = Number(goal.current_amount) + contributionTotal;
   const targetAmount = Number(goal.target_amount);
   const progressPercent = targetAmount > 0 ? (currentAmount / targetAmount) * 100 : 0;
+  const daysUntilTarget = goal.target_date ? getDaysUntilDate(goal.target_date) : null;
 
   return {
     goal,
@@ -657,21 +689,28 @@ function buildGoalSummary(goal: Goal, contributions: GoalContribution[]): GoalSu
     remaining: Math.max(targetAmount - currentAmount, 0),
     progressPercent,
     isCompleted: currentAmount >= targetAmount,
+    daysUntilTarget,
+    isNearTargetDate: daysUntilTarget !== null && daysUntilTarget >= 0 && daysUntilTarget <= 30,
+    isOverdue: daysUntilTarget !== null && daysUntilTarget < 0,
   };
 }
 
 function validateGoalForm(form: typeof emptyGoalForm) {
   if (!form.name.trim()) return "Escribe el nombre de la meta.";
-  if (Number(form.target_amount) <= 0) return "El monto objetivo debe ser mayor a 0.";
+  if (!form.goal_type) return "Selecciona el tipo de meta.";
+  if (!Number.isFinite(Number(form.target_amount)) || Number(form.target_amount) <= 0) return "El monto objetivo debe ser mayor a 0.";
+  if (!form.currency) return "Selecciona la moneda de la meta.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
-  if (Number(form.current_amount) < 0) return "El monto actual inicial no puede ser negativo.";
+  if (!Number.isFinite(Number(form.current_amount)) || Number(form.current_amount) < 0) return "El monto actual inicial no puede ser negativo.";
+  if (form.target_date && !isValidDateInput(form.target_date)) return "La fecha objetivo no parece valida. Selecciona una fecha desde el calendario.";
   return "";
 }
 
 function validateContributionForm(form: typeof emptyContributionForm, goals: Goal[], accounts: Account[]) {
   if (!form.goal_id) return "Selecciona una meta.";
   if (!form.contribution_date) return "Selecciona la fecha de la aportacion.";
-  if (Number(form.amount) <= 0) return "El monto debe ser mayor a 0.";
+  if (!isValidDateInput(form.contribution_date)) return "La fecha de la aportacion no parece valida. Selecciona una fecha desde el calendario.";
+  if (!Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0) return "El monto de la aportacion debe ser mayor a 0.";
 
   const goal = goals.find((item) => item.id === form.goal_id);
   if (!goal) return "Selecciona una meta valida.";
@@ -680,7 +719,7 @@ function validateContributionForm(form: typeof emptyContributionForm, goals: Goa
     const account = accounts.find((item) => item.id === form.account_id);
     if (!account) return "Selecciona una cuenta valida.";
     if (normalizeCurrency(account.currency) !== normalizeCurrency(goal.currency)) {
-      return "La meta y la cuenta origen tienen monedas distintas. El tipo de cambio se agregara en una fase posterior.";
+      return `La meta esta en ${goal.currency} y la cuenta esta en ${account.currency}. Por ahora usa una cuenta de la misma moneda o guarda la aportacion sin cuenta origen.`;
     }
   }
 
@@ -704,12 +743,29 @@ function getAccountName(accounts: Account[], accountId: string | null) {
   return accounts.find((account) => account.id === accountId)?.name ?? "Sin cuenta";
 }
 
-function getFriendlyGoalError(error: string) {
+function getFriendlyGoalError(error: string, fallback = "No se pudo completar la accion.") {
   if (error.includes("goal_contributions") || error.includes("goal_contribution_id") || error.includes("currency") || error.includes("schema cache")) {
     return "Falta actualizar Supabase para metas. Ejecuta el SQL docs/ADD_GOALS.sql.";
   }
 
-  return `No se pudo completar la accion. Detalle: ${error}`;
+  return `${fallback} Intenta de nuevo. Detalle: ${error}`;
+}
+
+function isValidDateInput(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  return !Number.isNaN(date.getTime()) && dateValue.length === 10;
+}
+
+function getDaysUntilDate(dateValue: string) {
+  const target = new Date(`${dateValue}T00:00:00`).getTime();
+  const today = new Date().setHours(0, 0, 0, 0);
+  return Math.ceil((target - today) / 86400000);
+}
+
+function formatTargetDays(days: number) {
+  if (days === 0) return "Hoy";
+  if (days > 0) return `${days} dia(s) restantes`;
+  return `${Math.abs(days)} dia(s) vencida`;
 }
 
 function formatDate(dateValue: string) {
@@ -803,6 +859,17 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="mt-1 font-semibold text-slate-950">{value}</p>
     </div>
   );
+}
+
+function StatusChip({ text, tone }: { text: string; tone: "green" | "amber" | "red" | "slate" }) {
+  const styles = {
+    green: "border-teal-200 bg-teal-50 text-teal-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    red: "border-red-200 bg-red-50 text-red-700",
+    slate: "border-slate-200 bg-slate-50 text-slate-600",
+  };
+
+  return <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${styles[tone]}`}>{text}</span>;
 }
 
 function EmptyMessage({ text }: { text: string }) {
