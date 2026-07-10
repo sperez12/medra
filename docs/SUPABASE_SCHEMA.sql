@@ -169,12 +169,16 @@ create table if not exists public.asset_prices (
 create table if not exists public.budgets (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null default 'Presupuesto mensual',
   category_id uuid not null references public.categories(id) on delete cascade,
   month date not null,
   amount numeric(14, 2) not null check (amount >= 0),
   currency text not null default 'MXN',
+  period text not null default 'monthly' check (period in ('monthly')),
+  description text,
+  is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  unique (user_id, category_id, month)
+  unique (user_id, category_id, month, currency)
 );
 
 create table if not exists public.goals (
@@ -214,4 +218,6 @@ create index if not exists account_movements_payment_id_idx on public.account_mo
 create index if not exists account_movements_transfer_id_idx on public.account_movements(transfer_id);
 create index if not exists account_transfers_user_id_idx on public.account_transfers(user_id);
 create index if not exists account_transfers_transfer_date_idx on public.account_transfers(transfer_date);
+create index if not exists budgets_user_id_idx on public.budgets(user_id);
+create index if not exists budgets_month_idx on public.budgets(month);
 create index if not exists financial_events_user_id_idx on public.financial_events(user_id);

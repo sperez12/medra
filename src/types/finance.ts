@@ -92,3 +92,19 @@ export type AccountTransfer = {
   description: string | null;
   created_at: string;
 };
+
+export type BudgetPeriod = "monthly";
+
+export type Budget = {
+  id: string;
+  user_id: string;
+  name: string;
+  category_id: string;
+  month: string;
+  amount: number;
+  currency: CurrencyCode | string;
+  period: BudgetPeriod;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+};

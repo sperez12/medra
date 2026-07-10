@@ -11,7 +11,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
-import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
+import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Budget, Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   minimum: "Pago minimo",
@@ -42,6 +42,7 @@ export function DashboardSummary() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
   const [accountTransfers, setAccountTransfers] = useState<AccountTransfer[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,6 +74,7 @@ export function DashboardSummary() {
       { data: accountData, error: accountError },
       { data: movementData, error: movementError },
       { data: transferData, error: transferError },
+      { data: budgetData, error: budgetError },
     ] = await Promise.all([
       supabase
         .from("credit_cards")
@@ -98,9 +100,15 @@ export function DashboardSummary() {
         .select("*")
         .eq("user_id", userData.user.id)
         .order("transfer_date", { ascending: false }),
+      supabase
+        .from("budgets")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .eq("is_active", true)
+        .order("month", { ascending: false }),
     ]);
 
-    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError) {
+    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError || budgetError) {
       setMessage({
         type: "error",
         text:
@@ -111,6 +119,7 @@ export function DashboardSummary() {
           accountError?.message ??
           movementError?.message ??
           transferError?.message ??
+          budgetError?.message ??
           "No se pudo cargar el dashboard.",
       });
       setIsLoading(false);
@@ -124,6 +133,7 @@ export function DashboardSummary() {
     setAccounts((accountData ?? []) as Account[]);
     setAccountMovements((movementData ?? []) as AccountMovement[]);
     setAccountTransfers((transferData ?? []) as AccountTransfer[]);
+    setBudgets((budgetData ?? []) as Budget[]);
     setIsLoading(false);
   }
 
@@ -162,6 +172,14 @@ export function DashboardSummary() {
   const topAccounts = [...activeAccountSummaries].sort((a, b) => b.balance - a.balance).slice(0, 5);
   const recentAccountMovements = accountMovements.slice(0, 6);
   const recentAccountTransfers = accountTransfers.slice(0, 5);
+  const currentMonthValue = new Date().toISOString().slice(0, 7);
+  const currentBudgetSummaries = budgets
+    .filter((budget) => budget.month.slice(0, 7) === currentMonthValue)
+    .map((budget) => buildBudgetDashboardSummary(budget, cards, expenses));
+  const exceededBudgets = currentBudgetSummaries.filter((summary) => summary.status === "exceeded");
+  const nearLimitBudgets = currentBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
+  const budgetedByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => Number(summary.budget.amount), (summary) => summary.budget.currency);
+  const budgetSpentByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => summary.spent, (summary) => summary.budget.currency);
   const summaryCurrencies = Array.from(
     new Set([
       ...totalSpentByCurrency,
@@ -238,8 +256,23 @@ export function DashboardSummary() {
       <section className="grid gap-4 md:grid-cols-3">
         <SmallStat label="Tarjetas activas" value={cards.length} />
         <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
+        <SmallStat label="Presupuestos activos" value={currentBudgetSummaries.length} />
         <SmallStat label="Proximas a corte" value={cardsNearCut.length} />
         <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Presupuestos del mes</h2>
+          <p className="text-sm text-slate-600">Resumen de presupuestos activos del mes actual, separado por moneda.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Presupuestado" value={<MoneyTotals totals={budgetedByCurrency} />} />
+          <SummaryCard label="Gastado" value={<MoneyTotals totals={budgetSpentByCurrency} />} />
+          <SummaryCard label="Excedidos" value={String(exceededBudgets.length)} />
+          <SummaryCard label="Cerca del limite" value={String(nearLimitBudgets.length)} />
+        </div>
+        {currentBudgetSummaries.length === 0 ? <EmptyTableMessage text="Aun no hay presupuestos activos para el mes actual." /> : null}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -404,6 +437,38 @@ function buildNetWorthByCurrency(
       netWorth: accounts - pendingCards,
     };
   });
+}
+
+function buildBudgetDashboardSummary(budget: Budget, cards: CreditCard[], expenses: Expense[]) {
+  const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  const currency = normalizeCurrency(budget.currency);
+  const spent = expenses
+    .filter((expense) => {
+      const card = cards.find((item) => item.id === expense.credit_card_id);
+      const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
+      return (
+        expense.category_id === budget.category_id &&
+        normalizeCurrency(card?.currency) === currency &&
+        expenseDate >= start &&
+        expenseDate <= end
+      );
+    })
+    .reduce((total, expense) => total + Number(expense.amount), 0);
+  const usedPercent = Number(budget.amount) > 0 ? (spent / Number(budget.amount)) * 100 : 0;
+
+  return {
+    budget,
+    spent,
+    status: getBudgetStatus(usedPercent),
+  };
+}
+
+function getBudgetStatus(percent: number) {
+  if (percent > 100) return "exceeded";
+  if (percent > 90) return "danger";
+  if (percent >= 70) return "warning";
+  return "normal";
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
