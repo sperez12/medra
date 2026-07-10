@@ -143,8 +143,10 @@ create table if not exists public.platforms (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
-  platform_type text not null check (platform_type in ('broker', 'crypto_exchange', 'bank', 'other')),
+  platform_type text not null check (platform_type in ('broker', 'crypto_exchange', 'wallet', 'bank', 'retirement', 'other')),
+  country text,
   currency text not null default 'MXN',
+  description text,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
@@ -154,8 +156,11 @@ create table if not exists public.assets (
   user_id uuid not null references auth.users(id) on delete cascade,
   symbol text not null,
   name text not null,
-  asset_type text not null check (asset_type in ('stock', 'etf', 'crypto', 'fund', 'cash', 'other')),
+  asset_type text not null check (asset_type in ('crypto', 'stock', 'etf', 'fund', 'bond', 'investment_cash', 'other')),
   currency text not null default 'USD',
+  current_price numeric(20, 8) not null default 0,
+  description text,
+  is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
 
@@ -164,8 +169,9 @@ create table if not exists public.holdings (
   user_id uuid not null references auth.users(id) on delete cascade,
   platform_id uuid not null references public.platforms(id) on delete cascade,
   asset_id uuid not null references public.assets(id) on delete cascade,
-  quantity numeric(20, 8) not null default 0,
-  average_cost numeric(20, 8) not null default 0,
+  quantity numeric(20, 8) not null default 0 check (quantity >= 0),
+  average_cost numeric(20, 8),
+  notes text,
   created_at timestamptz not null default now(),
   unique (user_id, platform_id, asset_id)
 );
@@ -176,10 +182,12 @@ create table if not exists public.investment_transactions (
   platform_id uuid not null references public.platforms(id) on delete cascade,
   asset_id uuid not null references public.assets(id) on delete cascade,
   transaction_date date not null,
-  transaction_type text not null check (transaction_type in ('buy', 'sell', 'dividend', 'deposit', 'withdrawal')),
-  quantity numeric(20, 8) not null default 0,
+  transaction_type text not null check (transaction_type in ('buy', 'sell', 'dividend', 'interest', 'deposit', 'withdrawal', 'adjustment')),
+  quantity numeric(20, 8) not null default 0 check (quantity >= 0),
   price numeric(20, 8) not null default 0,
+  total_amount numeric(20, 8) not null default 0,
   fees numeric(14, 2) not null default 0,
+  description text,
   created_at timestamptz not null default now()
 );
 
@@ -235,6 +243,11 @@ create index if not exists account_movements_transfer_id_idx on public.account_m
 create index if not exists account_movements_goal_contribution_id_idx on public.account_movements(goal_contribution_id);
 create index if not exists account_transfers_user_id_idx on public.account_transfers(user_id);
 create index if not exists account_transfers_transfer_date_idx on public.account_transfers(transfer_date);
+create index if not exists platforms_user_id_idx on public.platforms(user_id);
+create index if not exists assets_user_id_idx on public.assets(user_id);
+create index if not exists holdings_user_id_idx on public.holdings(user_id);
+create index if not exists investment_transactions_user_id_idx on public.investment_transactions(user_id);
+create index if not exists investment_transactions_transaction_date_idx on public.investment_transactions(transaction_date);
 create index if not exists budgets_user_id_idx on public.budgets(user_id);
 create index if not exists budgets_month_idx on public.budgets(month);
 create index if not exists goals_user_id_idx on public.goals(user_id);

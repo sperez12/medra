@@ -1,5 +1,16 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { InvestmentManager } from "@/components/investments/investment-manager";
+import { AppShell } from "@/components/app-shell";
 
 export default function Page() {
-  return <PlaceholderPage title="Inversiones" description="Aqui se controlaran plataformas, activos, holdings y transacciones." />;
+  return (
+    <AppShell>
+      <section className="mb-6">
+        <h1 className="text-3xl font-bold text-slate-950">Inversiones</h1>
+        <p className="mt-2 text-slate-600">
+          Registra plataformas, activos, holdings y transacciones de forma manual.
+        </p>
+      </section>
+      <InvestmentManager />
+    </AppShell>
+  );
 }

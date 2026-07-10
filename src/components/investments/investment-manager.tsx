@@ -1,0 +1,859 @@
+"use client";
+
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type {
+  Holding,
+  InvestmentAsset,
+  InvestmentAssetType,
+  InvestmentPlatform,
+  InvestmentPlatformType,
+  InvestmentTransaction,
+  InvestmentTransactionType,
+} from "@/types/finance";
+
+const platformTypeLabels: Record<InvestmentPlatformType, string> = {
+  broker: "Broker",
+  crypto_exchange: "Exchange cripto",
+  wallet: "Wallet",
+  bank: "Banco",
+  retirement: "Afore/retiro",
+  other: "Otra",
+};
+
+const assetTypeLabels: Record<InvestmentAssetType, string> = {
+  crypto: "Cripto",
+  stock: "Accion",
+  etf: "ETF",
+  fund: "Fondo",
+  bond: "Bono",
+  investment_cash: "Efectivo inversion",
+  other: "Otro",
+};
+
+const transactionTypeLabels: Record<InvestmentTransactionType, string> = {
+  buy: "Compra",
+  sell: "Venta",
+  dividend: "Dividendo",
+  interest: "Interes",
+  deposit: "Deposito",
+  withdrawal: "Retiro",
+  adjustment: "Ajuste",
+};
+
+const emptyPlatformForm = {
+  name: "",
+  platform_type: "broker" as InvestmentPlatformType,
+  country: "",
+  currency: DEFAULT_CURRENCY,
+  description: "",
+  is_active: true,
+};
+
+const emptyAssetForm = {
+  symbol: "",
+  name: "",
+  asset_type: "etf" as InvestmentAssetType,
+  currency: "USD",
+  current_price: "0",
+  description: "",
+  is_active: true,
+};
+
+const emptyHoldingForm = {
+  platform_id: "",
+  asset_id: "",
+  quantity: "0",
+  average_cost: "",
+  notes: "",
+};
+
+const emptyTransactionForm = {
+  platform_id: "",
+  asset_id: "",
+  transaction_date: new Date().toISOString().slice(0, 10),
+  transaction_type: "buy" as InvestmentTransactionType,
+  quantity: "0",
+  price: "0",
+  total_amount: "0",
+  fees: "0",
+  description: "",
+};
+
+type Message = {
+  type: "success" | "error" | "info";
+  text: string;
+};
+
+type HoldingSummary = {
+  holding: Holding;
+  platform: InvestmentPlatform | undefined;
+  asset: InvestmentAsset | undefined;
+  value: number;
+};
+
+export function InvestmentManager() {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [platforms, setPlatforms] = useState<InvestmentPlatform[]>([]);
+  const [assets, setAssets] = useState<InvestmentAsset[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [transactions, setTransactions] = useState<InvestmentTransaction[]>([]);
+  const [platformForm, setPlatformForm] = useState(emptyPlatformForm);
+  const [assetForm, setAssetForm] = useState(emptyAssetForm);
+  const [holdingForm, setHoldingForm] = useState(emptyHoldingForm);
+  const [transactionForm, setTransactionForm] = useState(emptyTransactionForm);
+  const [editingPlatformId, setEditingPlatformId] = useState<string | null>(null);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [editingHoldingId, setEditingHoldingId] = useState<string | null>(null);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  async function loadData() {
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta conectar Supabase para usar inversiones." });
+      setIsLoading(false);
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "info", text: "Inicia sesion para ver tus inversiones." });
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const [
+      { data: platformData, error: platformError },
+      { data: assetData, error: assetError },
+      { data: holdingData, error: holdingError },
+      { data: transactionData, error: transactionError },
+    ] = await Promise.all([
+      supabase.from("platforms").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
+      supabase.from("assets").select("*").eq("user_id", userData.user.id).order("symbol"),
+      supabase.from("holdings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
+      supabase.from("investment_transactions").select("*").eq("user_id", userData.user.id).order("transaction_date", { ascending: false }),
+    ]);
+
+    if (platformError || assetError || holdingError || transactionError) {
+      setMessage({
+        type: "error",
+        text: getFriendlyInvestmentError(platformError?.message ?? assetError?.message ?? holdingError?.message ?? transactionError?.message ?? "No se pudieron cargar las inversiones."),
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    setPlatforms((platformData ?? []) as InvestmentPlatform[]);
+    setAssets((assetData ?? []) as InvestmentAsset[]);
+    setHoldings((holdingData ?? []) as Holding[]);
+    setTransactions((transactionData ?? []) as InvestmentTransaction[]);
+    setIsLoading(false);
+  }
+
+  async function getUserId() {
+    if (!supabase) return null;
+    const { data } = await supabase.auth.getUser();
+    return data.user?.id ?? null;
+  }
+
+  async function savePlatform(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
+    const userId = await getUserId();
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar plataformas." });
+    const validation = validatePlatform(platformForm);
+    if (validation) return setMessage({ type: "error", text: validation });
+
+    const payload = {
+      user_id: userId,
+      name: platformForm.name.trim(),
+      platform_type: platformForm.platform_type,
+      country: platformForm.country.trim() || null,
+      currency: normalizeCurrency(platformForm.currency),
+      description: platformForm.description.trim() || null,
+      is_active: platformForm.is_active,
+    };
+    const request = editingPlatformId
+      ? supabase.from("platforms").update(payload).eq("id", editingPlatformId).eq("user_id", userId)
+      : supabase.from("platforms").insert(payload);
+    const { error } = await request;
+    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+
+    setPlatformForm(emptyPlatformForm);
+    setEditingPlatformId(null);
+    setMessage({ type: "success", text: editingPlatformId ? "Plataforma actualizada." : "Plataforma creada." });
+    await loadData();
+  }
+
+  async function saveAsset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
+    const userId = await getUserId();
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar activos." });
+    const validation = validateAsset(assetForm);
+    if (validation) return setMessage({ type: "error", text: validation });
+
+    const payload = {
+      user_id: userId,
+      symbol: assetForm.symbol.trim().toUpperCase(),
+      name: assetForm.name.trim(),
+      asset_type: assetForm.asset_type,
+      currency: normalizeCurrency(assetForm.currency),
+      current_price: Number(assetForm.current_price),
+      description: assetForm.description.trim() || null,
+      is_active: assetForm.is_active,
+    };
+    const request = editingAssetId
+      ? supabase.from("assets").update(payload).eq("id", editingAssetId).eq("user_id", userId)
+      : supabase.from("assets").insert(payload);
+    const { error } = await request;
+    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+
+    setAssetForm(emptyAssetForm);
+    setEditingAssetId(null);
+    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el nuevo precio." : "Activo creado." });
+    await loadData();
+  }
+
+  async function saveHolding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
+    const userId = await getUserId();
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar holdings." });
+    const validation = validateHolding(holdingForm);
+    if (validation) return setMessage({ type: "error", text: validation });
+
+    const payload = {
+      user_id: userId,
+      platform_id: holdingForm.platform_id,
+      asset_id: holdingForm.asset_id,
+      quantity: Number(holdingForm.quantity),
+      average_cost: holdingForm.average_cost === "" ? null : Number(holdingForm.average_cost),
+      notes: holdingForm.notes.trim() || null,
+    };
+    const request = editingHoldingId
+      ? supabase.from("holdings").update(payload).eq("id", editingHoldingId).eq("user_id", userId)
+      : supabase.from("holdings").insert(payload);
+    const { error } = await request;
+    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+
+    setHoldingForm(emptyHoldingForm);
+    setEditingHoldingId(null);
+    setMessage({ type: "success", text: editingHoldingId ? "Holding actualizado." : "Holding creado." });
+    await loadData();
+  }
+
+  async function saveTransaction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
+    const userId = await getUserId();
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar transacciones." });
+    const validation = validateTransaction(transactionForm);
+    if (validation) return setMessage({ type: "error", text: validation });
+
+    const payload = {
+      user_id: userId,
+      platform_id: transactionForm.platform_id,
+      asset_id: transactionForm.asset_id,
+      transaction_date: transactionForm.transaction_date,
+      transaction_type: transactionForm.transaction_type,
+      quantity: Number(transactionForm.quantity),
+      price: Number(transactionForm.price),
+      total_amount: Number(transactionForm.total_amount),
+      fees: Number(transactionForm.fees || 0),
+      description: transactionForm.description.trim() || null,
+    };
+    const request = editingTransactionId
+      ? supabase.from("investment_transactions").update(payload).eq("id", editingTransactionId).eq("user_id", userId)
+      : supabase.from("investment_transactions").insert(payload);
+    const { error } = await request;
+    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+
+    setTransactionForm(emptyTransactionForm);
+    setEditingTransactionId(null);
+    setMessage({ type: "success", text: editingTransactionId ? "Transaccion actualizada." : "Transaccion registrada." });
+    await loadData();
+  }
+
+  async function deleteRow(table: "platforms" | "assets" | "holdings" | "investment_transactions", id: string, label: string) {
+    if (!supabase) return;
+    const confirmed = window.confirm(`Vas a borrar ${label}.\n\nSeguro que quieres continuar?`);
+    if (!confirmed) return setMessage({ type: "info", text: "No se borro nada." });
+    const userId = await getUserId();
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para borrar." });
+    const { error } = await supabase.from(table).delete().eq("id", id).eq("user_id", userId);
+    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+    setMessage({ type: "success", text: "Registro borrado correctamente." });
+    await loadData();
+  }
+
+  const holdingSummaries = holdings.map((holding) => buildHoldingSummary(holding, platforms, assets));
+  const totalByCurrency = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
+  const valueByPlatform = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency)
+    .flatMap((total) =>
+      platforms.map((platform) => ({
+        platform,
+        currency: total.currency,
+        amount: holdingSummaries
+          .filter((summary) => summary.platform?.id === platform.id && normalizeCurrency(summary.asset?.currency) === total.currency)
+          .reduce((sum, summary) => sum + summary.value, 0),
+      }))
+    )
+    .filter((item) => item.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 6);
+  const valueByAssetType = buildValueByAssetType(holdingSummaries);
+  const recentTransactions = transactions.slice(0, 8);
+
+  if (isLoading) return <StatusPanel text="Cargando inversiones..." />;
+
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Valor total estimado" value={<MoneyTotals totals={totalByCurrency} />} />
+        <SummaryCard label="Plataformas activas" value={String(platforms.filter((item) => item.is_active).length)} />
+        <SummaryCard label="Activos activos" value={String(assets.filter((item) => item.is_active).length)} />
+        <SummaryCard label="Holdings" value={String(holdings.length)} />
+      </section>
+
+      <p className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
+        Los precios son manuales por ahora. No hay conexion con mercados, acciones en tiempo real ni cripto automatico.
+      </p>
+
+      {message ? <StatusMessage message={message} /> : null}
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={() => { setEditingPlatformId(null); setPlatformForm(emptyPlatformForm); }} />
+        <AssetForm form={assetForm} editingId={editingAssetId} onSubmit={saveAsset} onChange={setAssetForm} onCancel={() => { setEditingAssetId(null); setAssetForm(emptyAssetForm); }} />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <HoldingForm assets={assets} platforms={platforms} form={holdingForm} editingId={editingHoldingId} onSubmit={saveHolding} onChange={setHoldingForm} onCancel={() => { setEditingHoldingId(null); setHoldingForm(emptyHoldingForm); }} />
+        <TransactionForm
+          assets={assets}
+          platforms={platforms}
+          form={transactionForm}
+          editingId={editingTransactionId}
+          onSubmit={saveTransaction}
+          onChange={setTransactionForm}
+          onCancel={() => { setEditingTransactionId(null); setTransactionForm(emptyTransactionForm); }}
+        />
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-3">
+        <SimpleList title="Valor por plataforma">
+          {valueByPlatform.map((item) => (
+            <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={formatCurrency(item.amount, item.currency)} />
+          ))}
+          {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea holdings para ver este resumen." /> : null}
+        </SimpleList>
+        <SimpleList title="Valor por tipo de activo">
+          {valueByAssetType.map((item) => (
+            <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={formatCurrency(item.amount, item.currency)} />
+          ))}
+          {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
+        </SimpleList>
+        <SimpleList title="Plataformas">
+          {platforms.map((platform) => (
+            <ListRow
+              key={platform.id}
+              title={platform.name}
+              detail={`${platformTypeLabels[platform.platform_type]} - ${platform.currency}${platform.country ? ` - ${platform.country}` : ""}`}
+              value={platform.is_active ? "Activa" : "Inactiva"}
+              onEdit={() => startEditPlatform(platform)}
+              onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`)}
+            />
+          ))}
+          {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
+        </SimpleList>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <HoldingsTable
+          rows={holdingSummaries}
+          onEdit={(holding) => startEditHolding(holding)}
+          onDelete={(holding) => deleteRow("holdings", holding.id, "este holding")}
+        />
+        <AssetsTable
+          assets={assets}
+          onEdit={(asset) => startEditAsset(asset)}
+          onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`)}
+        />
+      </section>
+
+      <TransactionsTable
+        assets={assets}
+        platforms={platforms}
+        transactions={recentTransactions}
+        onEdit={(transaction) => startEditTransaction(transaction)}
+        onDelete={(transaction) => deleteRow("investment_transactions", transaction.id, "esta transaccion")}
+      />
+    </div>
+  );
+
+  function startEditPlatform(platform: InvestmentPlatform) {
+    setEditingPlatformId(platform.id);
+    setPlatformForm({
+      name: platform.name,
+      platform_type: platform.platform_type,
+      country: platform.country ?? "",
+      currency: normalizeCurrency(platform.currency),
+      description: platform.description ?? "",
+      is_active: platform.is_active,
+    });
+    setMessage({ type: "info", text: "Editando plataforma." });
+  }
+
+  function startEditAsset(asset: InvestmentAsset) {
+    setEditingAssetId(asset.id);
+    setAssetForm({
+      symbol: asset.symbol,
+      name: asset.name,
+      asset_type: asset.asset_type,
+      currency: normalizeCurrency(asset.currency),
+      current_price: String(asset.current_price),
+      description: asset.description ?? "",
+      is_active: asset.is_active,
+    });
+    setMessage({ type: "info", text: "Editando activo." });
+  }
+
+  function startEditHolding(holding: Holding) {
+    setEditingHoldingId(holding.id);
+    setHoldingForm({
+      platform_id: holding.platform_id,
+      asset_id: holding.asset_id,
+      quantity: String(holding.quantity),
+      average_cost: holding.average_cost === null ? "" : String(holding.average_cost),
+      notes: holding.notes ?? "",
+    });
+    setMessage({ type: "info", text: "Editando holding." });
+  }
+
+  function startEditTransaction(transaction: InvestmentTransaction) {
+    setEditingTransactionId(transaction.id);
+    setTransactionForm({
+      platform_id: transaction.platform_id,
+      asset_id: transaction.asset_id,
+      transaction_date: transaction.transaction_date,
+      transaction_type: transaction.transaction_type,
+      quantity: String(transaction.quantity),
+      price: String(transaction.price),
+      total_amount: String(transaction.total_amount),
+      fees: String(transaction.fees),
+      description: transaction.description ?? "",
+    });
+    setMessage({ type: "info", text: "Editando transaccion." });
+  }
+}
+
+function PlatformForm({ form, editingId, onSubmit, onChange, onCancel }: {
+  form: typeof emptyPlatformForm;
+  editingId: string | null;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChange: (form: typeof emptyPlatformForm) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar plataforma" : "Nueva plataforma"}</h2>
+      <div className="mt-4 grid gap-4">
+        <TextInput label="Nombre de la plataforma" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
+        <SelectInput label="Tipo" value={form.platform_type} onChange={(value) => onChange({ ...form, platform_type: value as InvestmentPlatformType })}>
+          {Object.entries(platformTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </SelectInput>
+        <TextInput label="Pais opcional" required={false} value={form.country} onChange={(value) => onChange({ ...form, country: value })} />
+        <CurrencySelect value={form.currency} onChange={(value) => onChange({ ...form, currency: value })} />
+        <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
+        <Checkbox label="Activa" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
+      </div>
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar plataforma" : "Crear plataforma"} onCancel={onCancel} />
+    </form>
+  );
+}
+
+function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
+  form: typeof emptyAssetForm;
+  editingId: string | null;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChange: (form: typeof emptyAssetForm) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar activo" : "Nuevo activo"}</h2>
+      <div className="mt-4 grid gap-4">
+        <TextInput label="Simbolo" placeholder="VOO, AAPL, BTC..." value={form.symbol} onChange={(value) => onChange({ ...form, symbol: value })} />
+        <TextInput label="Nombre" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
+        <SelectInput label="Tipo" value={form.asset_type} onChange={(value) => onChange({ ...form, asset_type: value as InvestmentAssetType })}>
+          {Object.entries(assetTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </SelectInput>
+        <CurrencySelect value={form.currency} onChange={(value) => onChange({ ...form, currency: value })} />
+        <TextInput label="Precio actual manual" min="0" step="0.00000001" type="number" value={form.current_price} onChange={(value) => onChange({ ...form, current_price: value })} />
+        <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
+        <Checkbox label="Activo" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
+      </div>
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar activo" : "Crear activo"} onCancel={onCancel} />
+    </form>
+  );
+}
+
+function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, onCancel }: {
+  assets: InvestmentAsset[];
+  platforms: InvestmentPlatform[];
+  form: typeof emptyHoldingForm;
+  editingId: string | null;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChange: (form: typeof emptyHoldingForm) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar holding" : "Nuevo holding"}</h2>
+      <div className="mt-4 grid gap-4">
+        <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
+        <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
+        <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
+        <TextInput label="Precio promedio opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
+        <TextInput label="Notas opcionales" required={false} value={form.notes} onChange={(value) => onChange({ ...form, notes: value })} />
+      </div>
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar holding" : "Crear holding"} onCancel={onCancel} />
+    </form>
+  );
+}
+
+function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChange, onCancel }: {
+  assets: InvestmentAsset[];
+  platforms: InvestmentPlatform[];
+  form: typeof emptyTransactionForm;
+  editingId: string | null;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChange: (form: typeof emptyTransactionForm) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar transaccion" : "Nueva transaccion"}</h2>
+      <div className="mt-4 grid gap-4">
+        <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
+        <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
+        <TextInput label="Fecha" type="date" value={form.transaction_date} onChange={(value) => onChange({ ...form, transaction_date: value })} />
+        <SelectInput label="Tipo" value={form.transaction_type} onChange={(value) => onChange({ ...form, transaction_type: value as InvestmentTransactionType })}>
+          {Object.entries(transactionTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </SelectInput>
+        <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
+        <TextInput label="Precio unitario" min="0" step="0.00000001" type="number" value={form.price} onChange={(value) => onChange({ ...form, price: value })} />
+        <TextInput label="Monto total" min="0" step="0.00000001" type="number" value={form.total_amount} onChange={(value) => onChange({ ...form, total_amount: value })} />
+        <TextInput label="Comision opcional" min="0" step="0.01" type="number" value={form.fees} onChange={(value) => onChange({ ...form, fees: value })} />
+        <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
+      </div>
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar transaccion" : "Registrar transaccion"} onCancel={onCancel} />
+    </form>
+  );
+}
+
+function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
+  return (
+    <TableCard title="Holdings">
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 text-right font-medium">Valor</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <tbody>
+          {rows.map(({ holding, platform, asset, value }) => (
+            <tr className="border-b border-slate-100" key={holding.id}>
+              <td className="py-3 pr-4">{platform?.name ?? "Plataforma no encontrada"}</td>
+              <td className="py-3 pr-4">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
+              <td className="py-3 pr-4">{Number(holding.quantity).toLocaleString("es-MX")}</td>
+              <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
+              <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
+              <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length === 0 ? <EmptyMessage text="Aun no hay holdings. Crea una plataforma, un activo y despues registra tu cantidad." /> : null}
+    </TableCard>
+  );
+}
+
+function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; onEdit: (asset: InvestmentAsset) => void; onDelete: (asset: InvestmentAsset) => void }) {
+  return (
+    <TableCard title="Activos">
+      <table className="w-full min-w-[680px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio manual</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <tbody>
+          {assets.map((asset) => (
+            <tr className="border-b border-slate-100" key={asset.id}>
+              <td className="py-3 pr-4 font-semibold">{asset.symbol}</td>
+              <td className="py-3 pr-4">{asset.name}</td>
+              <td className="py-3 pr-4">{assetTypeLabels[asset.asset_type]}</td>
+              <td className="py-3 pr-4">{formatCurrency(Number(asset.current_price), asset.currency)}</td>
+              <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
+              <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(asset)} onDelete={() => onDelete(asset)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {assets.length === 0 ? <EmptyMessage text="Aun no hay activos. Registra uno como VOO, AAPL, BTC o efectivo de inversion." /> : null}
+    </TableCard>
+  );
+}
+
+function TransactionsTable({ assets, platforms, transactions, onEdit, onDelete }: {
+  assets: InvestmentAsset[];
+  platforms: InvestmentPlatform[];
+  transactions: InvestmentTransaction[];
+  onEdit: (transaction: InvestmentTransaction) => void;
+  onDelete: (transaction: InvestmentTransaction) => void;
+}) {
+  return (
+    <TableCard title="Transacciones recientes">
+      <table className="w-full min-w-[860px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Fecha</th><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 text-right font-medium">Total</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <tbody>
+          {transactions.map((transaction) => {
+            const asset = assets.find((item) => item.id === transaction.asset_id);
+            return (
+              <tr className="border-b border-slate-100" key={transaction.id}>
+                <td className="py-3 pr-4">{formatDate(transaction.transaction_date)}</td>
+                <td className="py-3 pr-4">{platforms.find((item) => item.id === transaction.platform_id)?.name ?? "Plataforma no encontrada"}</td>
+                <td className="py-3 pr-4">{asset?.symbol ?? "Activo no encontrado"}</td>
+                <td className="py-3 pr-4">{transactionTypeLabels[transaction.transaction_type]}</td>
+                <td className="py-3 pr-4">{Number(transaction.quantity).toLocaleString("es-MX")}</td>
+                <td className="py-3 text-right font-semibold">{formatCurrency(Number(transaction.total_amount), asset?.currency)}</td>
+                <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(transaction)} onDelete={() => onDelete(transaction)} /></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {transactions.length === 0 ? <EmptyMessage text="Aun no hay transacciones registradas." /> : null}
+    </TableCard>
+  );
+}
+
+function buildHoldingSummary(holding: Holding, platforms: InvestmentPlatform[], assets: InvestmentAsset[]): HoldingSummary {
+  const asset = assets.find((item) => item.id === holding.asset_id);
+  return {
+    holding,
+    platform: platforms.find((item) => item.id === holding.platform_id),
+    asset,
+    value: Number(holding.quantity) * Number(asset?.current_price ?? 0),
+  };
+}
+
+function buildValueByAssetType(rows: HoldingSummary[]) {
+  const totals = new Map<string, { assetType: InvestmentAssetType; currency: string; amount: number }>();
+  rows.forEach((row) => {
+    if (!row.asset) return;
+    const key = `${row.asset.asset_type}-${normalizeCurrency(row.asset.currency)}`;
+    const current = totals.get(key) ?? { assetType: row.asset.asset_type, currency: normalizeCurrency(row.asset.currency), amount: 0 };
+    current.amount += row.value;
+    totals.set(key, current);
+  });
+  return Array.from(totals.values()).sort((a, b) => b.amount - a.amount);
+}
+
+function validatePlatform(form: typeof emptyPlatformForm) {
+  if (!form.name.trim()) return "Escribe el nombre de la plataforma.";
+  if (!form.platform_type) return "Selecciona el tipo de plataforma.";
+  if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
+  return "";
+}
+
+function validateAsset(form: typeof emptyAssetForm) {
+  if (!form.symbol.trim()) return "Escribe el simbolo del activo.";
+  if (!form.name.trim()) return "Escribe el nombre del activo.";
+  if (!form.asset_type) return "Selecciona el tipo de activo.";
+  if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
+  if (!Number.isFinite(Number(form.current_price)) || Number(form.current_price) < 0) return "El precio actual manual no puede ser negativo.";
+  return "";
+}
+
+function validateHolding(form: typeof emptyHoldingForm) {
+  if (!form.platform_id) return "Selecciona una plataforma.";
+  if (!form.asset_id) return "Selecciona un activo.";
+  if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
+  if (form.average_cost !== "" && (!Number.isFinite(Number(form.average_cost)) || Number(form.average_cost) < 0)) return "El precio promedio no puede ser negativo.";
+  return "";
+}
+
+function validateTransaction(form: typeof emptyTransactionForm) {
+  if (!form.platform_id) return "Selecciona una plataforma.";
+  if (!form.asset_id) return "Selecciona un activo.";
+  if (!form.transaction_date) return "Selecciona la fecha de la transaccion.";
+  if (!form.transaction_type) return "Selecciona el tipo de transaccion.";
+  if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
+  if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0) return "El precio unitario no puede ser negativo.";
+  if (!Number.isFinite(Number(form.total_amount)) || Number(form.total_amount) < 0) return "El monto total no puede ser negativo.";
+  if (!Number.isFinite(Number(form.fees || 0)) || Number(form.fees || 0) < 0) return "La comision no puede ser negativa.";
+  return "";
+}
+
+function getFriendlyInvestmentError(error: string) {
+  if (error.includes("schema cache") || error.includes("platform_type") || error.includes("asset_type") || error.includes("total_amount")) {
+    return "Falta actualizar Supabase para inversiones. Ejecuta el SQL docs/ADD_INVESTMENTS.sql.";
+  }
+  if (error.includes("duplicate") || error.includes("unique")) return "Ya existe un registro parecido. Revisa plataforma y activo.";
+  return `No se pudo completar la accion. Detalle: ${error}`;
+}
+
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+}
+
+function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentPlatform[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <SelectInput label="Plataforma" value={value} onChange={onChange}>
+      <option value="">Selecciona una plataforma</option>
+      {platforms.map((platform) => <option key={platform.id} value={platform.id}>{platform.name} - {platform.currency}</option>)}
+    </SelectInput>
+  );
+}
+
+function AssetSelect({ assets, value, onChange }: { assets: InvestmentAsset[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <SelectInput label="Activo" value={value} onChange={onChange}>
+      <option value="">Selecciona un activo</option>
+      {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.symbol} - {asset.name}</option>)}
+    </SelectInput>
+  );
+}
+
+function CurrencySelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <SelectInput label="Moneda" value={value} onChange={onChange}>
+      {SUPPORTED_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.label}</option>)}
+    </SelectInput>
+  );
+}
+
+function TextInput({ label, value, onChange, type = "text", min, step, required = true, placeholder }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  min?: string;
+  step?: string;
+  required?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" min={min} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} step={step} type={type} value={value} />
+    </label>
+  );
+}
+
+function SelectInput({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange(event.target.value)} required value={value}>
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function Checkbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-slate-700">
+      <input checked={checked} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
+      {label}
+    </label>
+  );
+}
+
+function FormButtons({ editing, submitLabel, onCancel }: { editing: boolean; submitLabel: string; onCancel: () => void }) {
+  return (
+    <>
+      <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">{submitLabel}</button>
+      {editing ? <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" onClick={onCancel} type="button">Cancelar edicion</button> : null}
+    </>
+  );
+}
+
+function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex justify-end gap-2">
+      <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={onEdit} type="button">Editar</button>
+      <button className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={onDelete} type="button">Borrar</button>
+    </div>
+  );
+}
+
+function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
+  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  return <span className="space-y-1">{totals.map((total) => <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>)}</span>;
+}
+
+function SummaryCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function SimpleList({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="font-semibold text-slate-950">{title}</h2>
+      <div className="mt-3 space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; detail: string; value: string; onEdit?: () => void; onDelete?: () => void }) {
+  return (
+    <div className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-medium text-slate-950">{title}</p>
+          <p className="text-sm text-slate-500">{detail}</p>
+        </div>
+        <p className="text-right text-sm font-semibold text-slate-900">{value}</p>
+      </div>
+      {onEdit && onDelete ? <div className="mt-2"><ActionButtons onEdit={onEdit} onDelete={onDelete} /></div> : null}
+    </div>
+  );
+}
+
+function TableCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+      <div className="mt-4 overflow-x-auto">{children}</div>
+    </div>
+  );
+}
+
+function EmptyMessage({ text }: { text: string }) {
+  return <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">{text}</p>;
+}
+
+function StatusMessage({ message }: { message: Message }) {
+  const styles = {
+    success: "border-green-200 bg-green-50 text-green-800",
+    error: "border-red-200 bg-red-50 text-red-800",
+    info: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+  return <p className={`rounded-md border px-3 py-2 text-sm ${styles[message.type]}`}>{message.text}</p>;
+}
+
+function StatusPanel({ text }: { text: string }) {
+  return <div className="rounded-lg border border-slate-200 bg-white p-6 text-slate-600 shadow-sm">{text}</div>;
+}

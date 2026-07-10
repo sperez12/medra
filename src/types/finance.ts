@@ -138,3 +138,60 @@ export type GoalContribution = {
   description: string | null;
   created_at: string;
 };
+
+export type InvestmentPlatformType = "broker" | "crypto_exchange" | "wallet" | "bank" | "retirement" | "other";
+
+export type InvestmentPlatform = {
+  id: string;
+  user_id: string;
+  name: string;
+  platform_type: InvestmentPlatformType;
+  country: string | null;
+  currency: CurrencyCode | string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type InvestmentAssetType = "crypto" | "stock" | "etf" | "fund" | "bond" | "investment_cash" | "other";
+
+export type InvestmentAsset = {
+  id: string;
+  user_id: string;
+  symbol: string;
+  name: string;
+  asset_type: InvestmentAssetType;
+  currency: CurrencyCode | string;
+  current_price: number;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type Holding = {
+  id: string;
+  user_id: string;
+  platform_id: string;
+  asset_id: string;
+  quantity: number;
+  average_cost: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type InvestmentTransactionType = "buy" | "sell" | "dividend" | "interest" | "deposit" | "withdrawal" | "adjustment";
+
+export type InvestmentTransaction = {
+  id: string;
+  user_id: string;
+  platform_id: string;
+  asset_id: string;
+  transaction_date: string;
+  transaction_type: InvestmentTransactionType;
+  quantity: number;
+  price: number;
+  total_amount: number;
+  fees: number;
+  description: string | null;
+  created_at: string;
+};

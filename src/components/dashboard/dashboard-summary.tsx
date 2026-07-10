@@ -12,7 +12,23 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
-import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Budget, Category, CreditCard, Expense, Goal, GoalContribution, Payment, PaymentType } from "@/types/finance";
+import type {
+  Account,
+  AccountMovement,
+  AccountMovementType,
+  AccountTransfer,
+  Budget,
+  Category,
+  CreditCard,
+  Expense,
+  Goal,
+  GoalContribution,
+  Holding,
+  InvestmentAsset,
+  InvestmentPlatform,
+  Payment,
+  PaymentType,
+} from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   minimum: "Pago minimo",
@@ -46,6 +62,9 @@ export function DashboardSummary() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalContributions, setGoalContributions] = useState<GoalContribution[]>([]);
+  const [investmentPlatforms, setInvestmentPlatforms] = useState<InvestmentPlatform[]>([]);
+  const [investmentAssets, setInvestmentAssets] = useState<InvestmentAsset[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,6 +99,9 @@ export function DashboardSummary() {
       { data: budgetData, error: budgetError },
       { data: goalData, error: goalError },
       { data: goalContributionData, error: goalContributionError },
+      { data: platformData, error: platformError },
+      { data: assetData, error: assetError },
+      { data: holdingData, error: holdingError },
     ] = await Promise.all([
       supabase
         .from("credit_cards")
@@ -121,9 +143,12 @@ export function DashboardSummary() {
         .select("*")
         .eq("user_id", userData.user.id)
         .order("contribution_date", { ascending: false }),
+      supabase.from("platforms").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
+      supabase.from("assets").select("*").eq("user_id", userData.user.id).order("symbol"),
+      supabase.from("holdings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
     ]);
 
-    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError || budgetError || goalError || goalContributionError) {
+    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError || budgetError || goalError || goalContributionError || platformError || assetError || holdingError) {
       setMessage({
         type: "error",
         text:
@@ -137,6 +162,9 @@ export function DashboardSummary() {
           budgetError?.message ??
           goalError?.message ??
           goalContributionError?.message ??
+          platformError?.message ??
+          assetError?.message ??
+          holdingError?.message ??
           "No se pudo cargar el dashboard.",
       });
       setIsLoading(false);
@@ -153,6 +181,9 @@ export function DashboardSummary() {
     setBudgets((budgetData ?? []) as Budget[]);
     setGoals((goalData ?? []) as Goal[]);
     setGoalContributions((goalContributionData ?? []) as GoalContribution[]);
+    setInvestmentPlatforms((platformData ?? []) as InvestmentPlatform[]);
+    setInvestmentAssets((assetData ?? []) as InvestmentAsset[]);
+    setHoldings((holdingData ?? []) as Holding[]);
     setIsLoading(false);
   }
 
@@ -208,6 +239,10 @@ export function DashboardSummary() {
     .filter(({ goal }) => Boolean(goal.target_date))
     .sort((a, b) => new Date(`${a.goal.target_date}T00:00:00`).getTime() - new Date(`${b.goal.target_date}T00:00:00`).getTime())
     .slice(0, 4);
+  const investmentSummaries = holdings.map((holding) => buildInvestmentDashboardSummary(holding, investmentPlatforms, investmentAssets));
+  const investmentsByCurrency = groupMoneyByCurrency(investmentSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
+  const topInvestmentPlatforms = buildTopInvestmentPlatforms(investmentSummaries).slice(0, 4);
+  const topInvestmentAssets = [...investmentSummaries].sort((a, b) => b.value - a.value).slice(0, 4);
   const summaryCurrencies = Array.from(
     new Set([
       ...totalSpentByCurrency,
@@ -302,6 +337,23 @@ export function DashboardSummary() {
           <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
         </div>
         <UpcomingGoals goals={upcomingGoals} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Inversiones</h2>
+          <p className="text-sm text-slate-600">Valores estimados con precios manuales. Sin cotizaciones automaticas todavia.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Valor total" value={<MoneyTotals totals={investmentsByCurrency} />} />
+          <SummaryCard label="Plataformas" value={String(investmentPlatforms.length)} />
+          <SummaryCard label="Activos" value={String(investmentAssets.length)} />
+          <SummaryCard label="Holdings" value={String(holdings.length)} />
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <TopInvestmentsList title="Principales plataformas" rows={topInvestmentPlatforms} />
+          <TopInvestmentsList title="Principales activos" rows={topInvestmentAssets} />
+        </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -534,6 +586,46 @@ function buildGoalDashboardSummary(goal: Goal, contributions: GoalContribution[]
   };
 }
 
+function buildInvestmentDashboardSummary(holding: Holding, platforms: InvestmentPlatform[], assets: InvestmentAsset[]) {
+  const asset = assets.find((item) => item.id === holding.asset_id);
+  const platform = platforms.find((item) => item.id === holding.platform_id);
+
+  return {
+    holding,
+    asset,
+    platform,
+    name: asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado",
+    detail: platform?.name ?? "Plataforma no encontrada",
+    currency: normalizeCurrency(asset?.currency),
+    value: Number(holding.quantity) * Number(asset?.current_price ?? 0),
+  };
+}
+
+function buildTopInvestmentPlatforms(
+  summaries: Array<{
+    platform: InvestmentPlatform | undefined;
+    currency: string;
+    value: number;
+  }>
+) {
+  const totals = new Map<string, { name: string; detail: string; currency: string; value: number }>();
+
+  summaries.forEach((summary) => {
+    const platformName = summary.platform?.name ?? "Plataforma no encontrada";
+    const key = `${summary.platform?.id ?? "missing"}-${summary.currency}`;
+    const current = totals.get(key) ?? {
+      name: platformName,
+      detail: summary.currency,
+      currency: summary.currency,
+      value: 0,
+    };
+    current.value += summary.value;
+    totals.set(key, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => b.value - a.value);
+}
+
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
   if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
 
@@ -700,6 +792,37 @@ function UpcomingGoals({
         ))}
       </div>
       {goals.length === 0 ? <EmptyTableMessage text="Aun no hay metas activas con fecha objetivo." /> : null}
+    </div>
+  );
+}
+
+function TopInvestmentsList({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: Array<{
+    name: string;
+    detail: string;
+    currency: string;
+    value: number;
+  }>;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">{title}</h3>
+      <div className="mt-3 space-y-3">
+        {rows.map((row) => (
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={`${row.name}-${row.currency}`}>
+            <div>
+              <p className="font-medium text-slate-900">{row.name}</p>
+              <p className="text-sm text-slate-500">{row.detail}</p>
+            </div>
+            <p className="text-right text-sm font-semibold text-slate-950">{formatCurrency(row.value, row.currency)}</p>
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 ? <EmptyTableMessage text="Aun no hay inversiones manuales registradas." /> : null}
     </div>
   );
 }

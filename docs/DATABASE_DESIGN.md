@@ -105,7 +105,9 @@ Tabla: `platforms`
 Campos:
 - `name`
 - `platform_type`
+- `country`
 - `currency`
+- `description`
 - `is_active`
 
 ## activos
@@ -117,6 +119,9 @@ Campos:
 - `name`
 - `asset_type`
 - `currency`
+- `current_price`
+- `description`
+- `is_active`
 
 ## holdings
 
@@ -127,6 +132,7 @@ Campos:
 - `asset_id`
 - `quantity`
 - `average_cost`
+- `notes`
 
 ## transacciones de inversion
 
@@ -139,7 +145,9 @@ Campos:
 - `transaction_type`
 - `quantity`
 - `price`
+- `total_amount`
 - `fees`
+- `description`
 
 ## precios de activos
 
