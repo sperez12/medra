@@ -591,6 +591,7 @@ function buildInvestmentDashboardSummary(holding: Holding, platforms: Investment
   const platform = platforms.find((item) => item.id === holding.platform_id);
 
   return {
+    keyId: `holding-${holding.id}`,
     holding,
     asset,
     platform,
@@ -608,12 +609,13 @@ function buildTopInvestmentPlatforms(
     value: number;
   }>
 ) {
-  const totals = new Map<string, { name: string; detail: string; currency: string; value: number }>();
+  const totals = new Map<string, { keyId: string; name: string; detail: string; currency: string; value: number }>();
 
   summaries.forEach((summary) => {
     const platformName = summary.platform?.name ?? "Plataforma no encontrada";
     const key = `${summary.platform?.id ?? "missing"}-${summary.currency}`;
     const current = totals.get(key) ?? {
+      keyId: `platform-${key}`,
       name: platformName,
       detail: summary.currency,
       currency: summary.currency,
@@ -802,6 +804,7 @@ function TopInvestmentsList({
 }: {
   title: string;
   rows: Array<{
+    keyId: string;
     name: string;
     detail: string;
     currency: string;
@@ -813,7 +816,7 @@ function TopInvestmentsList({
       <h3 className="font-semibold text-slate-950">{title}</h3>
       <div className="mt-3 space-y-3">
         {rows.map((row) => (
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={`${row.name}-${row.currency}`}>
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={row.keyId}>
             <div>
               <p className="font-medium text-slate-900">{row.name}</p>
               <p className="text-sm text-slate-500">{row.detail}</p>
