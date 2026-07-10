@@ -7,6 +7,7 @@ import type {
   Holding,
   InvestmentAsset,
   InvestmentAssetType,
+  InvestmentPriceSource,
   InvestmentPlatform,
   InvestmentPlatformType,
   InvestmentTransaction,
@@ -30,6 +31,11 @@ const assetTypeLabels: Record<InvestmentAssetType, string> = {
   bond: "Bono",
   investment_cash: "Efectivo inversion",
   other: "Otro",
+};
+
+const priceSourceLabels: Record<InvestmentPriceSource, string> = {
+  manual: "Manual",
+  coingecko: "CoinGecko",
 };
 
 const transactionTypeLabels: Record<InvestmentTransactionType, string> = {
@@ -57,6 +63,8 @@ const emptyAssetForm = {
   asset_type: "etf" as InvestmentAssetType,
   currency: "USD",
   current_price: "0",
+  price_source: "manual" as InvestmentPriceSource,
+  coingecko_id: "",
   description: "",
   is_active: true,
 };
@@ -109,6 +117,7 @@ export function InvestmentManager() {
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpdatingCryptoPrices, setIsUpdatingCryptoPrices] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -209,6 +218,8 @@ export function InvestmentManager() {
       asset_type: assetForm.asset_type,
       currency: normalizeCurrency(assetForm.currency),
       current_price: Number(assetForm.current_price),
+      price_source: assetForm.asset_type === "crypto" ? assetForm.price_source : "manual",
+      coingecko_id: assetForm.asset_type === "crypto" && assetForm.price_source === "coingecko" ? assetForm.coingecko_id.trim().toLowerCase() : null,
       description: assetForm.description.trim() || null,
       is_active: assetForm.is_active,
     };
@@ -220,7 +231,7 @@ export function InvestmentManager() {
 
     setAssetForm(emptyAssetForm);
     setEditingAssetId(null);
-    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el nuevo precio manual." : "Activo creado. Ahora puedes registrarlo en un holding." });
+    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el precio configurado." : "Activo creado. Ahora puedes registrarlo en un holding." });
     await loadData();
   }
 
@@ -286,6 +297,45 @@ export function InvestmentManager() {
     await loadData();
   }
 
+  async function updateCryptoPrices() {
+    setMessage(null);
+
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta conectar Supabase antes de actualizar precios." });
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setMessage({ type: "error", text: "Primero inicia sesion para actualizar precios cripto." });
+      return;
+    }
+
+    setIsUpdatingCryptoPrices(true);
+    try {
+      const response = await fetch("/api/crypto-prices", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        setMessage({ type: "error", text: result.error ?? "No pude actualizar precios cripto. Se conservaron los precios actuales." });
+        return;
+      }
+
+      setMessage({ type: result.updated > 0 ? "success" : "info", text: result.message ?? "Actualizacion de precios cripto terminada." });
+      await loadData();
+    } catch {
+      setMessage({ type: "error", text: "No pude conectar con el actualizador de precios. Se conservaron los precios actuales." });
+    } finally {
+      setIsUpdatingCryptoPrices(false);
+    }
+  }
+
   async function deleteRow(table: "platforms" | "assets" | "holdings" | "investment_transactions", id: string, label: string, successMessage: string) {
     if (!supabase) return;
     const confirmed = window.confirm(`Vas a borrar ${label}.\n\nSeguro que quieres continuar?`);
@@ -315,9 +365,19 @@ export function InvestmentManager() {
         <SummaryCard label="Holdings" value={String(holdings.length)} />
       </section>
 
-      <p className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
-        Los precios son manuales por ahora. No hay conexion con mercados, acciones en tiempo real ni cripto automatico.
-      </p>
+      <div className="flex flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 md:flex-row md:items-center md:justify-between">
+        <p>
+          Los precios pueden ser manuales o venir de CoinGecko para cripto. No hay acciones, ETFs en tiempo real ni brokers automaticos todavia.
+        </p>
+        <button
+          className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300 md:w-auto"
+          disabled={isUpdatingCryptoPrices}
+          onClick={updateCryptoPrices}
+          type="button"
+        >
+          {isUpdatingCryptoPrices ? "Actualizando..." : "Actualizar precios cripto"}
+        </button>
+      </div>
 
       {message ? <StatusMessage message={message} /> : null}
 
@@ -411,6 +471,8 @@ export function InvestmentManager() {
       asset_type: asset.asset_type,
       currency: normalizeCurrency(asset.currency),
       current_price: String(asset.current_price),
+      price_source: asset.price_source ?? "manual",
+      coingecko_id: asset.coingecko_id ?? "",
       description: asset.description ?? "",
       is_active: asset.is_active,
     });
@@ -484,11 +546,38 @@ function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
       <div className="mt-4 grid gap-4">
         <TextInput label="Simbolo" placeholder="VOO, AAPL, BTC..." value={form.symbol} onChange={(value) => onChange({ ...form, symbol: value })} />
         <TextInput label="Nombre" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
-        <SelectInput label="Tipo" value={form.asset_type} onChange={(value) => onChange({ ...form, asset_type: value as InvestmentAssetType })}>
+        <SelectInput
+          label="Tipo"
+          value={form.asset_type}
+          onChange={(value) => {
+            const nextType = value as InvestmentAssetType;
+            onChange({
+              ...form,
+              asset_type: nextType,
+              price_source: nextType === "crypto" ? form.price_source : "manual",
+              coingecko_id: nextType === "crypto" ? form.coingecko_id : "",
+            });
+          }}
+        >
           {Object.entries(assetTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </SelectInput>
         <CurrencySelect value={form.currency} onChange={(value) => onChange({ ...form, currency: value })} />
         <TextInput label="Precio actual manual" min="0" step="0.00000001" type="number" value={form.current_price} onChange={(value) => onChange({ ...form, current_price: value })} />
+        {form.asset_type === "crypto" ? (
+          <>
+            <SelectInput label="Fuente de precio" value={form.price_source} onChange={(value) => onChange({ ...form, price_source: value as InvestmentPriceSource })}>
+              {Object.entries(priceSourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </SelectInput>
+            {form.price_source === "coingecko" ? (
+              <div className="space-y-2">
+                <TextInput label="CoinGecko ID" placeholder="bitcoin, ethereum, solana..." value={form.coingecko_id} onChange={(value) => onChange({ ...form, coingecko_id: value })} />
+                <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                  CoinGecko usa IDs, no siempre simbolos. Ejemplos: BTC = bitcoin, ETH = ethereum, SOL = solana.
+                </p>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
         <Checkbox label="Activo" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
       </div>
@@ -575,8 +664,8 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
 function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
   return (
     <TableCard title="Holdings">
-      <table className="w-full min-w-[880px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[1040px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {rows.map(({ holding, platform, asset, value }) => (
             <tr className="border-b border-slate-100" key={holding.id}>
@@ -585,6 +674,8 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
               <td className="py-3 pr-4">{Number(holding.quantity).toLocaleString("es-MX")}</td>
               <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : formatCurrency(Number(holding.average_cost), asset?.currency)}</td>
               <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
+              <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
+              <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
               <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
@@ -705,6 +796,9 @@ function validateAsset(form: typeof emptyAssetForm) {
   if (!form.currency) return "Selecciona la moneda del activo.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   if (!Number.isFinite(Number(form.current_price)) || Number(form.current_price) < 0) return "El precio actual manual no puede ser negativo.";
+  if (form.asset_type === "crypto" && form.price_source === "coingecko" && !form.coingecko_id.trim()) {
+    return "Escribe el CoinGecko ID. Ejemplos: bitcoin, ethereum, solana.";
+  }
   return "";
 }
 
@@ -742,8 +836,11 @@ function calculateTransactionTotal(quantity: string, price: string) {
 }
 
 function getFriendlyInvestmentError(error: string) {
+  if (error.includes("price_source") || error.includes("coingecko_id") || error.includes("last_price_updated_at")) {
+    return "Falta actualizar Supabase para precios cripto. Ejecuta el SQL docs/ADD_CRYPTO_PRICE_SUPPORT.sql.";
+  }
   if (error.includes("schema cache") || error.includes("platform_type") || error.includes("asset_type") || error.includes("total_amount")) {
-    return "Falta actualizar Supabase para inversiones. Ejecuta el SQL docs/ADD_INVESTMENTS.sql.";
+    return "Falta actualizar Supabase para inversiones. Ejecuta el SQL docs/ADD_INVESTMENTS.sql y despues docs/ADD_CRYPTO_PRICE_SUPPORT.sql.";
   }
   if (error.includes("duplicate") || error.includes("unique")) return "Ya existe un registro parecido. Revisa plataforma y activo.";
   if (error.includes("foreign key") || error.includes("violates")) {
@@ -754,6 +851,16 @@ function getFriendlyInvestmentError(error: string) {
 
 function formatDate(dateValue: string) {
   return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+}
+
+function formatDateTime(dateValue: string) {
+  return new Date(dateValue).toLocaleString("es-MX");
+}
+
+function getPriceSourceLabel(asset: InvestmentAsset | undefined) {
+  if (!asset) return "Sin dato";
+  if (asset.asset_type === "crypto" && asset.price_source === "coingecko") return "CoinGecko";
+  return "Manual";
 }
 
 function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentPlatform[]; value: string; onChange: (value: string) => void }) {

@@ -120,6 +120,9 @@ Campos:
 - `asset_type`
 - `currency`
 - `current_price`
+- `price_source`
+- `coingecko_id`
+- `last_price_updated_at`
 - `description`
 - `is_active`
 

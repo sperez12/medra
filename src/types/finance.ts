@@ -154,6 +154,7 @@ export type InvestmentPlatform = {
 };
 
 export type InvestmentAssetType = "crypto" | "stock" | "etf" | "fund" | "bond" | "investment_cash" | "other";
+export type InvestmentPriceSource = "manual" | "coingecko";
 
 export type InvestmentAsset = {
   id: string;
@@ -163,6 +164,9 @@ export type InvestmentAsset = {
   asset_type: InvestmentAssetType;
   currency: CurrencyCode | string;
   current_price: number;
+  price_source: InvestmentPriceSource;
+  coingecko_id: string | null;
+  last_price_updated_at: string | null;
   description: string | null;
   is_active: boolean;
   created_at: string;

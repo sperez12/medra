@@ -159,6 +159,9 @@ create table if not exists public.assets (
   asset_type text not null check (asset_type in ('crypto', 'stock', 'etf', 'fund', 'bond', 'investment_cash', 'other')),
   currency text not null default 'USD',
   current_price numeric(20, 8) not null default 0,
+  price_source text not null default 'manual' check (price_source in ('manual', 'coingecko')),
+  coingecko_id text,
+  last_price_updated_at timestamptz,
   description text,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
