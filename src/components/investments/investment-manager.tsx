@@ -189,7 +189,7 @@ export function InvestmentManager() {
 
     setPlatformForm(emptyPlatformForm);
     setEditingPlatformId(null);
-    setMessage({ type: "success", text: editingPlatformId ? "Plataforma actualizada." : "Plataforma creada." });
+    setMessage({ type: "success", text: editingPlatformId ? "Plataforma actualizada. El resumen ya usa sus nuevos datos." : "Plataforma creada. Ahora puedes asociarle activos y holdings." });
     await loadData();
   }
 
@@ -220,7 +220,7 @@ export function InvestmentManager() {
 
     setAssetForm(emptyAssetForm);
     setEditingAssetId(null);
-    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el nuevo precio." : "Activo creado." });
+    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el nuevo precio manual." : "Activo creado. Ahora puedes registrarlo en un holding." });
     await loadData();
   }
 
@@ -249,7 +249,7 @@ export function InvestmentManager() {
 
     setHoldingForm(emptyHoldingForm);
     setEditingHoldingId(null);
-    setMessage({ type: "success", text: editingHoldingId ? "Holding actualizado." : "Holding creado." });
+    setMessage({ type: "success", text: editingHoldingId ? "Holding actualizado. El valor estimado fue recalculado." : "Holding creado. Ya aparece en el valor total por moneda." });
     await loadData();
   }
 
@@ -282,11 +282,11 @@ export function InvestmentManager() {
 
     setTransactionForm(emptyTransactionForm);
     setEditingTransactionId(null);
-    setMessage({ type: "success", text: editingTransactionId ? "Transaccion actualizada." : "Transaccion registrada." });
+    setMessage({ type: "success", text: editingTransactionId ? "Transaccion actualizada." : "Transaccion registrada. Recuerda que por ahora no cambia automaticamente la cantidad del holding." });
     await loadData();
   }
 
-  async function deleteRow(table: "platforms" | "assets" | "holdings" | "investment_transactions", id: string, label: string) {
+  async function deleteRow(table: "platforms" | "assets" | "holdings" | "investment_transactions", id: string, label: string, successMessage: string) {
     if (!supabase) return;
     const confirmed = window.confirm(`Vas a borrar ${label}.\n\nSeguro que quieres continuar?`);
     if (!confirmed) return setMessage({ type: "info", text: "No se borro nada." });
@@ -294,25 +294,13 @@ export function InvestmentManager() {
     if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para borrar." });
     const { error } = await supabase.from(table).delete().eq("id", id).eq("user_id", userId);
     if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
-    setMessage({ type: "success", text: "Registro borrado correctamente." });
+    setMessage({ type: "success", text: successMessage });
     await loadData();
   }
 
   const holdingSummaries = holdings.map((holding) => buildHoldingSummary(holding, platforms, assets));
   const totalByCurrency = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
-  const valueByPlatform = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency)
-    .flatMap((total) =>
-      platforms.map((platform) => ({
-        platform,
-        currency: total.currency,
-        amount: holdingSummaries
-          .filter((summary) => summary.platform?.id === platform.id && normalizeCurrency(summary.asset?.currency) === total.currency)
-          .reduce((sum, summary) => sum + summary.value, 0),
-      }))
-    )
-    .filter((item) => item.amount > 0)
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 6);
+  const valueByPlatform = buildValueByPlatform(holdingSummaries).slice(0, 6);
   const valueByAssetType = buildValueByAssetType(holdingSummaries);
   const recentTransactions = transactions.slice(0, 8);
 
@@ -372,7 +360,7 @@ export function InvestmentManager() {
               detail={`${platformTypeLabels[platform.platform_type]} - ${platform.currency}${platform.country ? ` - ${platform.country}` : ""}`}
               value={platform.is_active ? "Activa" : "Inactiva"}
               onEdit={() => startEditPlatform(platform)}
-              onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`)}
+              onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`, "Plataforma borrada correctamente.")}
             />
           ))}
           {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
@@ -383,12 +371,12 @@ export function InvestmentManager() {
         <HoldingsTable
           rows={holdingSummaries}
           onEdit={(holding) => startEditHolding(holding)}
-          onDelete={(holding) => deleteRow("holdings", holding.id, "este holding")}
+          onDelete={(holding) => deleteRow("holdings", holding.id, "este holding", "Holding borrado. El valor total fue recalculado.")}
         />
         <AssetsTable
           assets={assets}
           onEdit={(asset) => startEditAsset(asset)}
-          onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`)}
+          onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
         />
       </section>
 
@@ -397,7 +385,7 @@ export function InvestmentManager() {
         platforms={platforms}
         transactions={recentTransactions}
         onEdit={(transaction) => startEditTransaction(transaction)}
-        onDelete={(transaction) => deleteRow("investment_transactions", transaction.id, "esta transaccion")}
+        onDelete={(transaction) => deleteRow("investment_transactions", transaction.id, "esta transaccion", "Transaccion borrada correctamente.")}
       />
     </div>
   );
@@ -524,6 +512,11 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
       <div className="mt-4 grid gap-4">
         <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
         <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
+        {platforms.length === 0 || assets.length === 0 ? (
+          <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+            Para crear un holding primero necesitas al menos una plataforma y un activo.
+          </p>
+        ) : null}
         <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
         <TextInput label="Precio promedio opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
         <TextInput label="Notas opcionales" required={false} value={form.notes} onChange={(value) => onChange({ ...form, notes: value })} />
@@ -542,19 +535,35 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
   onChange: (form: typeof emptyTransactionForm) => void;
   onCancel: () => void;
 }) {
+  function updateAmountFromQuantity(nextQuantity: string) {
+    const calculatedTotal = calculateTransactionTotal(nextQuantity, form.price);
+    onChange({ ...form, quantity: nextQuantity, total_amount: calculatedTotal });
+  }
+
+  function updateAmountFromPrice(nextPrice: string) {
+    const calculatedTotal = calculateTransactionTotal(form.quantity, nextPrice);
+    onChange({ ...form, price: nextPrice, total_amount: calculatedTotal });
+  }
+
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar transaccion" : "Nueva transaccion"}</h2>
       <div className="mt-4 grid gap-4">
         <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
         <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
+        {platforms.length === 0 || assets.length === 0 ? (
+          <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+            Para registrar transacciones primero crea una plataforma y un activo.
+          </p>
+        ) : null}
         <TextInput label="Fecha" type="date" value={form.transaction_date} onChange={(value) => onChange({ ...form, transaction_date: value })} />
         <SelectInput label="Tipo" value={form.transaction_type} onChange={(value) => onChange({ ...form, transaction_type: value as InvestmentTransactionType })}>
           {Object.entries(transactionTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </SelectInput>
-        <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
-        <TextInput label="Precio unitario" min="0" step="0.00000001" type="number" value={form.price} onChange={(value) => onChange({ ...form, price: value })} />
+        <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={updateAmountFromQuantity} />
+        <TextInput label="Precio unitario" min="0" step="0.00000001" type="number" value={form.price} onChange={updateAmountFromPrice} />
         <TextInput label="Monto total" min="0" step="0.00000001" type="number" value={form.total_amount} onChange={(value) => onChange({ ...form, total_amount: value })} />
+        <p className="text-xs text-slate-500">El monto total se calcula como cantidad por precio unitario, pero puedes ajustarlo manualmente si lo necesitas.</p>
         <TextInput label="Comision opcional" min="0" step="0.01" type="number" value={form.fees} onChange={(value) => onChange({ ...form, fees: value })} />
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
       </div>
@@ -566,15 +575,17 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
 function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
   return (
     <TableCard title="Holdings">
-      <table className="w-full min-w-[760px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 text-right font-medium">Valor</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[880px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {rows.map(({ holding, platform, asset, value }) => (
             <tr className="border-b border-slate-100" key={holding.id}>
               <td className="py-3 pr-4">{platform?.name ?? "Plataforma no encontrada"}</td>
               <td className="py-3 pr-4">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
               <td className="py-3 pr-4">{Number(holding.quantity).toLocaleString("es-MX")}</td>
+              <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : formatCurrency(Number(holding.average_cost), asset?.currency)}</td>
               <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
+              <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
               <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
             </tr>
@@ -664,9 +675,25 @@ function buildValueByAssetType(rows: HoldingSummary[]) {
   return Array.from(totals.values()).sort((a, b) => b.amount - a.amount);
 }
 
+function buildValueByPlatform(rows: HoldingSummary[]) {
+  const totals = new Map<string, { platform: InvestmentPlatform; currency: string; amount: number }>();
+
+  rows.forEach((row) => {
+    if (!row.platform || !row.asset) return;
+    const currency = normalizeCurrency(row.asset.currency);
+    const key = `${row.platform.id}-${currency}`;
+    const current = totals.get(key) ?? { platform: row.platform, currency, amount: 0 };
+    current.amount += row.value;
+    totals.set(key, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => b.amount - a.amount);
+}
+
 function validatePlatform(form: typeof emptyPlatformForm) {
   if (!form.name.trim()) return "Escribe el nombre de la plataforma.";
   if (!form.platform_type) return "Selecciona el tipo de plataforma.";
+  if (!form.currency) return "Selecciona la moneda principal de la plataforma.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   return "";
 }
@@ -675,6 +702,7 @@ function validateAsset(form: typeof emptyAssetForm) {
   if (!form.symbol.trim()) return "Escribe el simbolo del activo.";
   if (!form.name.trim()) return "Escribe el nombre del activo.";
   if (!form.asset_type) return "Selecciona el tipo de activo.";
+  if (!form.currency) return "Selecciona la moneda del activo.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   if (!Number.isFinite(Number(form.current_price)) || Number(form.current_price) < 0) return "El precio actual manual no puede ser negativo.";
   return "";
@@ -692,6 +720,7 @@ function validateTransaction(form: typeof emptyTransactionForm) {
   if (!form.platform_id) return "Selecciona una plataforma.";
   if (!form.asset_id) return "Selecciona un activo.";
   if (!form.transaction_date) return "Selecciona la fecha de la transaccion.";
+  if (!isValidDateInput(form.transaction_date)) return "La fecha de la transaccion no parece valida. Selecciona una fecha desde el calendario.";
   if (!form.transaction_type) return "Selecciona el tipo de transaccion.";
   if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
   if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0) return "El precio unitario no puede ser negativo.";
@@ -700,11 +729,26 @@ function validateTransaction(form: typeof emptyTransactionForm) {
   return "";
 }
 
+function isValidDateInput(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  return dateValue.length === 10 && !Number.isNaN(date.getTime());
+}
+
+function calculateTransactionTotal(quantity: string, price: string) {
+  const quantityNumber = Number(quantity);
+  const priceNumber = Number(price);
+  if (!Number.isFinite(quantityNumber) || !Number.isFinite(priceNumber)) return "0";
+  return String(Number((quantityNumber * priceNumber).toFixed(8)));
+}
+
 function getFriendlyInvestmentError(error: string) {
   if (error.includes("schema cache") || error.includes("platform_type") || error.includes("asset_type") || error.includes("total_amount")) {
     return "Falta actualizar Supabase para inversiones. Ejecuta el SQL docs/ADD_INVESTMENTS.sql.";
   }
   if (error.includes("duplicate") || error.includes("unique")) return "Ya existe un registro parecido. Revisa plataforma y activo.";
+  if (error.includes("foreign key") || error.includes("violates")) {
+    return "No pude borrar este registro porque todavia tiene informacion relacionada. Revisa holdings o transacciones vinculadas.";
+  }
   return `No se pudo completar la accion. Detalle: ${error}`;
 }
 
