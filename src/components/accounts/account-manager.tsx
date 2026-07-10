@@ -62,6 +62,7 @@ export function AccountManager() {
   const [movementForm, setMovementForm] = useState(emptyMovementForm);
   const [transferForm, setTransferForm] = useState(emptyTransferForm);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
+  const [editingTransferId, setEditingTransferId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -238,19 +239,29 @@ export function AccountManager() {
     const currency = normalizeCurrency(fromAccount?.currency);
     const description = transferForm.description.trim() || `Transferencia de ${fromAccount?.name} a ${toAccount?.name}`;
 
-    const { data: savedTransfer, error: transferError } = await supabase
-      .from("account_transfers")
-      .insert({
-        user_id: userData.user.id,
-        from_account_id: transferForm.from_account_id,
-        to_account_id: transferForm.to_account_id,
-        transfer_date: transferForm.transfer_date,
-        amount: Number(transferForm.amount),
-        currency,
-        description,
-      })
-      .select("*")
-      .single();
+    const transferPayload = {
+      user_id: userData.user.id,
+      from_account_id: transferForm.from_account_id,
+      to_account_id: transferForm.to_account_id,
+      transfer_date: transferForm.transfer_date,
+      amount: Number(transferForm.amount),
+      currency,
+      description,
+    };
+
+    const { data: savedTransfer, error: transferError } = editingTransferId
+      ? await supabase
+          .from("account_transfers")
+          .update(transferPayload)
+          .eq("id", editingTransferId)
+          .eq("user_id", userData.user.id)
+          .select("*")
+          .single()
+      : await supabase
+          .from("account_transfers")
+          .insert(transferPayload)
+          .select("*")
+          .single();
 
     if (transferError || !savedTransfer) {
       setMessage({ type: "error", text: getFriendlyAccountError(transferError?.message ?? "No se pudo guardar la transferencia.") });
@@ -258,9 +269,84 @@ export function AccountManager() {
     }
 
     const transfer = savedTransfer as AccountTransfer;
-    const { error: movementError } = await supabase.from("account_movements").insert([
+    const movementError = await syncTransferMovements(transfer, description, userData.user.id);
+    if (movementError) {
+      if (!editingTransferId) {
+        await supabase.from("account_transfers").delete().eq("id", transfer.id).eq("user_id", userData.user.id);
+      }
+      setMessage({ type: "error", text: movementError });
+      return;
+    }
+
+    setTransferForm({ ...emptyTransferForm, from_account_id: transferForm.from_account_id });
+    setEditingTransferId(null);
+    setMessage({
+      type: "success",
+      text: editingTransferId
+        ? "Transferencia actualizada correctamente. Sus movimientos asociados tambien se actualizaron."
+        : "Transferencia registrada correctamente. Se crearon el egreso y el ingreso automaticamente.",
+    });
+    await loadData();
+  }
+
+  async function syncTransferMovements(transfer: AccountTransfer, description: string, userId: string) {
+    if (!supabase) return "Falta configurar Supabase.";
+
+    const movementPayloads = {
+      expense: {
+        user_id: userId,
+        account_id: transfer.from_account_id,
+        transfer_id: transfer.id,
+        movement_date: transfer.transfer_date,
+        movement_type: "expense" as const,
+        amount: Number(transfer.amount),
+        description: `Salida por transferencia: ${description}`,
+      },
+      income: {
+        user_id: userId,
+        account_id: transfer.to_account_id,
+        transfer_id: transfer.id,
+        movement_date: transfer.transfer_date,
+        movement_type: "income" as const,
+        amount: Number(transfer.amount),
+        description: `Entrada por transferencia: ${description}`,
+      },
+    };
+
+    const existingMovements = movements.filter((movement) => movement.transfer_id === transfer.id);
+    const expenseMovement = existingMovements.find((movement) => movement.movement_type === "expense");
+    const incomeMovement = existingMovements.find((movement) => movement.movement_type === "income");
+
+    if (expenseMovement && incomeMovement) {
+      const [{ error: expenseError }, { error: incomeError }] = await Promise.all([
+        supabase
+          .from("account_movements")
+          .update(movementPayloads.expense)
+          .eq("id", expenseMovement.id)
+          .eq("user_id", userId),
+        supabase
+          .from("account_movements")
+          .update(movementPayloads.income)
+          .eq("id", incomeMovement.id)
+          .eq("user_id", userId),
+      ]);
+
+      return expenseError || incomeError
+        ? getFriendlyAccountError(expenseError?.message ?? incomeError?.message ?? "No se pudieron actualizar los movimientos.")
+        : "";
+    }
+
+    const { error: deleteError } = await supabase
+      .from("account_movements")
+      .delete()
+      .eq("transfer_id", transfer.id)
+      .eq("user_id", userId);
+
+    if (deleteError) return getFriendlyAccountError(deleteError.message);
+
+    const { error: insertError } = await supabase.from("account_movements").insert([
       {
-        user_id: userData.user.id,
+        user_id: userId,
         account_id: transfer.from_account_id,
         transfer_id: transfer.id,
         movement_date: transfer.transfer_date,
@@ -269,7 +355,7 @@ export function AccountManager() {
         description: `Salida por transferencia: ${description}`,
       },
       {
-        user_id: userData.user.id,
+        user_id: userId,
         account_id: transfer.to_account_id,
         transfer_id: transfer.id,
         movement_date: transfer.transfer_date,
@@ -279,15 +365,7 @@ export function AccountManager() {
       },
     ]);
 
-    if (movementError) {
-      await supabase.from("account_transfers").delete().eq("id", transfer.id).eq("user_id", userData.user.id);
-      setMessage({ type: "error", text: getFriendlyAccountError(movementError.message) });
-      return;
-    }
-
-    setTransferForm({ ...emptyTransferForm, from_account_id: transferForm.from_account_id });
-    setMessage({ type: "success", text: "Transferencia registrada correctamente. Se crearon el egreso y el ingreso automaticamente." });
-    await loadData();
+    return insertError ? getFriendlyAccountError(insertError.message) : "";
   }
 
   function startEditAccount(account: Account) {
@@ -308,6 +386,24 @@ export function AccountManager() {
     setEditingAccountId(null);
     setAccountForm(emptyAccountForm);
     setMessage({ type: "info", text: "Edicion cancelada." });
+  }
+
+  function startEditTransfer(transfer: AccountTransfer) {
+    setEditingTransferId(transfer.id);
+    setTransferForm({
+      from_account_id: transfer.from_account_id,
+      to_account_id: transfer.to_account_id,
+      transfer_date: transfer.transfer_date,
+      amount: String(transfer.amount),
+      description: transfer.description ?? "",
+    });
+    setMessage({ type: "info", text: "Editando transferencia. Cuando termines, presiona Guardar cambios." });
+  }
+
+  function cancelEditTransfer() {
+    setEditingTransferId(null);
+    setTransferForm(emptyTransferForm);
+    setMessage({ type: "info", text: "Edicion de transferencia cancelada." });
   }
 
   async function deleteAccount(account: Account) {
@@ -444,11 +540,13 @@ export function AccountManager() {
       <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
         <TransferForm
           accounts={accounts}
+          editingTransferId={editingTransferId}
           form={transferForm}
+          onCancel={cancelEditTransfer}
           onChange={setTransferForm}
           onSubmit={handleTransferSubmit}
         />
-        <RecentTransfers accounts={accounts} transfers={recentTransfers} onDelete={deleteTransfer} />
+        <RecentTransfers accounts={accounts} transfers={recentTransfers} onDelete={deleteTransfer} onEdit={startEditTransfer} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
@@ -561,18 +659,22 @@ function AccountList({
 
 function TransferForm({
   accounts,
+  editingTransferId,
   form,
+  onCancel,
   onChange,
   onSubmit,
 }: {
   accounts: Account[];
+  editingTransferId: string | null;
   form: typeof emptyTransferForm;
+  onCancel: () => void;
   onChange: (form: typeof emptyTransferForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-slate-950">Nueva transferencia</h2>
+      <h2 className="text-lg font-semibold text-slate-950">{editingTransferId ? "Editar transferencia" : "Nueva transferencia"}</h2>
       <p className="mt-1 text-sm text-slate-600">Por ahora solo se permiten transferencias entre cuentas con la misma moneda.</p>
       <div className="mt-4 grid gap-4">
         <AccountSelect accounts={accounts} label="Cuenta origen" value={form.from_account_id} onChange={(value) => onChange({ ...form, from_account_id: value })} />
@@ -582,8 +684,13 @@ function TransferForm({
         <TextInput label="Descripcion opcional" value={form.description} onChange={(value) => onChange({ ...form, description: value })} required={false} />
       </div>
       <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
-        Registrar transferencia
+        {editingTransferId ? "Guardar cambios" : "Registrar transferencia"}
       </button>
+      {editingTransferId ? (
+        <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" onClick={onCancel} type="button">
+          Cancelar edicion
+        </button>
+      ) : null}
     </form>
   );
 }
@@ -624,10 +731,12 @@ function RecentTransfers({
   accounts,
   transfers,
   onDelete,
+  onEdit,
 }: {
   accounts: Account[];
   transfers: AccountTransfer[];
   onDelete: (transfer: AccountTransfer) => void;
+  onEdit: (transfer: AccountTransfer) => void;
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -655,10 +764,15 @@ function RecentTransfers({
                   <td className="py-3 pr-4 text-slate-700">{toAccount?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{transfer.description || "Sin descripcion"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(transfer.amount), transfer.currency)}</td>
-                  <td className="py-3 pl-4 text-right">
-                    <button className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={() => onDelete(transfer)} type="button">
-                      Borrar
-                    </button>
+                  <td className="py-3 pl-4">
+                    <div className="flex justify-end gap-2">
+                      <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={() => onEdit(transfer)} type="button">
+                        Editar
+                      </button>
+                      <button className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={() => onDelete(transfer)} type="button">
+                        Borrar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
