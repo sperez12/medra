@@ -12,7 +12,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
-import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Budget, Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
+import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Budget, Category, CreditCard, Expense, Goal, GoalContribution, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   minimum: "Pago minimo",
@@ -44,6 +44,8 @@ export function DashboardSummary() {
   const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
   const [accountTransfers, setAccountTransfers] = useState<AccountTransfer[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [goalContributions, setGoalContributions] = useState<GoalContribution[]>([]);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,6 +78,8 @@ export function DashboardSummary() {
       { data: movementData, error: movementError },
       { data: transferData, error: transferError },
       { data: budgetData, error: budgetError },
+      { data: goalData, error: goalError },
+      { data: goalContributionData, error: goalContributionError },
     ] = await Promise.all([
       supabase
         .from("credit_cards")
@@ -107,9 +111,19 @@ export function DashboardSummary() {
         .eq("user_id", userData.user.id)
         .eq("is_active", true)
         .order("month", { ascending: false }),
+      supabase
+        .from("goals")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("goal_contributions")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("contribution_date", { ascending: false }),
     ]);
 
-    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError || budgetError) {
+    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError || budgetError || goalError || goalContributionError) {
       setMessage({
         type: "error",
         text:
@@ -121,6 +135,8 @@ export function DashboardSummary() {
           movementError?.message ??
           transferError?.message ??
           budgetError?.message ??
+          goalError?.message ??
+          goalContributionError?.message ??
           "No se pudo cargar el dashboard.",
       });
       setIsLoading(false);
@@ -135,6 +151,8 @@ export function DashboardSummary() {
     setAccountMovements((movementData ?? []) as AccountMovement[]);
     setAccountTransfers((transferData ?? []) as AccountTransfer[]);
     setBudgets((budgetData ?? []) as Budget[]);
+    setGoals((goalData ?? []) as Goal[]);
+    setGoalContributions((goalContributionData ?? []) as GoalContribution[]);
     setIsLoading(false);
   }
 
@@ -181,6 +199,15 @@ export function DashboardSummary() {
   const nearLimitBudgets = currentBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
   const budgetedByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => Number(summary.budget.amount), (summary) => summary.budget.currency);
   const budgetSpentByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => summary.spent, (summary) => summary.budget.currency);
+  const goalSummaries = goals.map((goal) => buildGoalDashboardSummary(goal, goalContributions));
+  const activeGoalSummaries = goalSummaries.filter(({ goal }) => goal.is_active);
+  const completedGoalSummaries = goalSummaries.filter((summary) => summary.isCompleted);
+  const goalCurrentByCurrency = groupMoneyByCurrency(activeGoalSummaries, (summary) => summary.currentAmount, (summary) => summary.goal.currency);
+  const goalTargetByCurrency = groupMoneyByCurrency(activeGoalSummaries, (summary) => Number(summary.goal.target_amount), (summary) => summary.goal.currency);
+  const upcomingGoals = activeGoalSummaries
+    .filter(({ goal }) => Boolean(goal.target_date))
+    .sort((a, b) => new Date(`${a.goal.target_date}T00:00:00`).getTime() - new Date(`${b.goal.target_date}T00:00:00`).getTime())
+    .slice(0, 4);
   const summaryCurrencies = Array.from(
     new Set([
       ...totalSpentByCurrency,
@@ -258,8 +285,23 @@ export function DashboardSummary() {
         <SmallStat label="Tarjetas activas" value={cards.length} />
         <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
         <SmallStat label="Presupuestos activos" value={currentBudgetSummaries.length} />
+        <SmallStat label="Metas activas" value={activeGoalSummaries.length} />
         <SmallStat label="Proximas a corte" value={cardsNearCut.length} />
         <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
+          <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
+          <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
+          <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
+          <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
+        </div>
+        <UpcomingGoals goals={upcomingGoals} />
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -475,6 +517,23 @@ function getBudgetStatus(percent: number) {
   return "normal";
 }
 
+function buildGoalDashboardSummary(goal: Goal, contributions: GoalContribution[]) {
+  const currentAmount =
+    Number(goal.current_amount) +
+    contributions
+      .filter((contribution) => contribution.goal_id === goal.id)
+      .reduce((total, contribution) => total + Number(contribution.amount), 0);
+  const targetAmount = Number(goal.target_amount);
+  const progressPercent = targetAmount > 0 ? (currentAmount / targetAmount) * 100 : 0;
+
+  return {
+    goal,
+    currentAmount,
+    progressPercent,
+    isCompleted: currentAmount >= targetAmount,
+  };
+}
+
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
   if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
 
@@ -610,6 +669,37 @@ function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; tr
         </table>
       </div>
       {transfers.length === 0 ? <EmptyTableMessage text="Aun no hay transferencias registradas." /> : null}
+    </div>
+  );
+}
+
+function UpcomingGoals({
+  goals,
+}: {
+  goals: Array<{
+    goal: Goal;
+    currentAmount: number;
+    progressPercent: number;
+  }>;
+}) {
+  return (
+    <div className="mt-4 rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Proximas metas por fecha objetivo</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {goals.map(({ goal, currentAmount, progressPercent }) => (
+          <div className="rounded-md bg-slate-50 p-3" key={goal.id}>
+            <p className="font-medium text-slate-950">{goal.name}</p>
+            <p className="text-sm text-slate-500">{goal.target_date ? formatDate(goal.target_date) : "Sin fecha"}</p>
+            <p className="mt-2 text-sm text-slate-700">
+              {formatCurrency(currentAmount, goal.currency)} de {formatCurrency(Number(goal.target_amount), goal.currency)}
+            </p>
+            <div className="mt-2 h-2 rounded-full bg-slate-200">
+              <div className="h-2 rounded-full bg-blue-500" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {goals.length === 0 ? <EmptyTableMessage text="Aun no hay metas activas con fecha objetivo." /> : null}
     </div>
   );
 }

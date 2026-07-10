@@ -98,12 +98,40 @@ create table if not exists public.account_transfers (
   check (from_account_id <> to_account_id)
 );
 
+create table if not exists public.goals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  goal_type text not null check (goal_type in ('savings', 'debt_payment', 'emergency_fund', 'travel', 'large_purchase', 'other')),
+  target_amount numeric(14, 2) not null,
+  current_amount numeric(14, 2) not null default 0,
+  currency text not null default 'MXN',
+  account_id uuid references public.accounts(id) on delete set null,
+  target_date date,
+  description text,
+  is_active boolean not null default true,
+  status text not null default 'active' check (status in ('active', 'completed', 'paused', 'cancelled')),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.goal_contributions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  goal_id uuid not null references public.goals(id) on delete cascade,
+  account_id uuid references public.accounts(id) on delete set null,
+  contribution_date date not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  description text,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.account_movements (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   account_id uuid not null references public.accounts(id) on delete cascade,
   payment_id uuid references public.payments(id) on delete cascade,
   transfer_id uuid references public.account_transfers(id) on delete cascade,
+  goal_contribution_id uuid references public.goal_contributions(id) on delete cascade,
   movement_date date not null,
   amount numeric(14, 2) not null,
   movement_type text not null check (movement_type in ('income', 'expense', 'transfer', 'adjustment')),
@@ -181,18 +209,6 @@ create table if not exists public.budgets (
   unique (user_id, category_id, month, currency)
 );
 
-create table if not exists public.goals (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  name text not null,
-  goal_type text not null check (goal_type in ('savings', 'debt_payment', 'investment', 'other')),
-  target_amount numeric(14, 2) not null,
-  current_amount numeric(14, 2) not null default 0,
-  target_date date,
-  status text not null default 'active' check (status in ('active', 'completed', 'paused', 'cancelled')),
-  created_at timestamptz not null default now()
-);
-
 create table if not exists public.financial_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -216,8 +232,12 @@ create index if not exists payments_payment_date_idx on public.payments(payment_
 create index if not exists account_movements_user_id_idx on public.account_movements(user_id);
 create index if not exists account_movements_payment_id_idx on public.account_movements(payment_id);
 create index if not exists account_movements_transfer_id_idx on public.account_movements(transfer_id);
+create index if not exists account_movements_goal_contribution_id_idx on public.account_movements(goal_contribution_id);
 create index if not exists account_transfers_user_id_idx on public.account_transfers(user_id);
 create index if not exists account_transfers_transfer_date_idx on public.account_transfers(transfer_date);
 create index if not exists budgets_user_id_idx on public.budgets(user_id);
 create index if not exists budgets_month_idx on public.budgets(month);
+create index if not exists goals_user_id_idx on public.goals(user_id);
+create index if not exists goal_contributions_user_id_idx on public.goal_contributions(user_id);
+create index if not exists goal_contributions_goal_id_idx on public.goal_contributions(goal_id);
 create index if not exists financial_events_user_id_idx on public.financial_events(user_id);

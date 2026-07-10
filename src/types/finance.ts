@@ -74,6 +74,7 @@ export type AccountMovement = {
   account_id: string;
   payment_id: string | null;
   transfer_id: string | null;
+  goal_contribution_id: string | null;
   movement_date: string;
   amount: number;
   movement_type: AccountMovementType;
@@ -106,5 +107,34 @@ export type Budget = {
   period: BudgetPeriod;
   description: string | null;
   is_active: boolean;
+  created_at: string;
+};
+
+export type GoalType = "savings" | "debt_payment" | "emergency_fund" | "travel" | "large_purchase" | "other";
+
+export type Goal = {
+  id: string;
+  user_id: string;
+  name: string;
+  goal_type: GoalType;
+  target_amount: number;
+  current_amount: number;
+  currency: CurrencyCode | string;
+  account_id: string | null;
+  target_date: string | null;
+  description: string | null;
+  is_active: boolean;
+  status: "active" | "completed" | "paused" | "cancelled";
+  created_at: string;
+};
+
+export type GoalContribution = {
+  id: string;
+  user_id: string;
+  goal_id: string;
+  account_id: string | null;
+  contribution_date: string;
+  amount: number;
+  description: string | null;
   created_at: string;
 };

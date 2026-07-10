@@ -1,5 +1,16 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { AppShell } from "@/components/app-shell";
+import { GoalManager } from "@/components/goals/goal-manager";
 
 export default function Page() {
-  return <PlaceholderPage title="Metas" description="Aqui se daran de alta metas de ahorro, deuda e inversion." />;
+  return (
+    <AppShell>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-slate-950">Metas</h1>
+        <p className="mt-2 text-slate-600">
+          Define objetivos de ahorro, pago de deuda o fondos especificos y registra aportaciones.
+        </p>
+      </div>
+      <GoalManager />
+    </AppShell>
+  );
 }

@@ -14,6 +14,7 @@ alter table public.investment_transactions enable row level security;
 alter table public.asset_prices enable row level security;
 alter table public.budgets enable row level security;
 alter table public.goals enable row level security;
+alter table public.goal_contributions enable row level security;
 alter table public.financial_events enable row level security;
 
 create policy "Users can read their profile"
@@ -105,6 +106,11 @@ with check (auth.uid() = user_id);
 
 create policy "Users can manage their goals"
 on public.goals for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "Users can manage their goal contributions"
+on public.goal_contributions for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
