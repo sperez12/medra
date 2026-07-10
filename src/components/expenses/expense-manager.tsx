@@ -9,23 +9,9 @@ import {
   type PeriodFilterState,
 } from "@/lib/period-filters";
 import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
+import { DEFAULT_EXPENSE_CATEGORY_NAMES, dedupeCategories } from "@/lib/categories";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Category, CreditCard, Expense } from "@/types/finance";
-
-const defaultCategoryNames = [
-  "Comida",
-  "Supermercado",
-  "Transporte",
-  "Gasolina",
-  "Casa",
-  "Servicios",
-  "Salud",
-  "Entretenimiento",
-  "Viajes",
-  "Compras",
-  "Suscripciones",
-  "Otros",
-];
 
 const emptyForm = {
   credit_card_id: "",
@@ -124,7 +110,7 @@ export function ExpenseManager() {
 
     const existingCategories = dedupeCategories((data ?? []) as Category[]);
     const existingNames = new Set(existingCategories.map((category) => category.name.toLowerCase()));
-    const missingNames = defaultCategoryNames.filter((name) => !existingNames.has(name.toLowerCase()));
+    const missingNames = DEFAULT_EXPENSE_CATEGORY_NAMES.filter((name) => !existingNames.has(name.toLowerCase()));
 
     if (missingNames.length > 0) {
       const { error: insertError } = await supabase.from("categories").insert(
@@ -494,20 +480,6 @@ function validateExpenseForm(form: typeof emptyForm) {
     return "Indica el numero de meses de la compra.";
   }
   return "";
-}
-
-function dedupeCategories(categories: Category[]) {
-  const seen = new Set<string>();
-
-  return categories.filter((category) => {
-    const key = `${category.user_id}:${category.type}:${category.name.trim().toLowerCase()}`;
-    if (seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  });
 }
 
 function getFriendlyExpenseError(error: string) {

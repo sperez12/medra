@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -175,7 +176,7 @@ export function DashboardSummary() {
   const currentMonthValue = new Date().toISOString().slice(0, 7);
   const currentBudgetSummaries = budgets
     .filter((budget) => budget.month.slice(0, 7) === currentMonthValue)
-    .map((budget) => buildBudgetDashboardSummary(budget, cards, expenses));
+    .map((budget) => buildBudgetDashboardSummary(budget, categories, cards, expenses));
   const exceededBudgets = currentBudgetSummaries.filter((summary) => summary.status === "exceeded");
   const nearLimitBudgets = currentBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
   const budgetedByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => Number(summary.budget.amount), (summary) => summary.budget.currency);
@@ -439,19 +440,22 @@ function buildNetWorthByCurrency(
   });
 }
 
-function buildBudgetDashboardSummary(budget: Budget, cards: CreditCard[], expenses: Expense[]) {
+function buildBudgetDashboardSummary(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]) {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const currency = normalizeCurrency(budget.currency);
+  const budgetCategoryName = normalizeCategoryName(findCategoryName(categories, budget.category_id));
   const spent = expenses
     .filter((expense) => {
       const card = cards.find((item) => item.id === expense.credit_card_id);
       const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
       return (
-        expense.category_id === budget.category_id &&
+        (expense.category_id === budget.category_id ||
+          isSameCategoryName(categories, expense.category_id, budget.category_id) ||
+          Boolean(budgetCategoryName && normalizeCategoryName(findCategoryName(categories, expense.category_id)) === budgetCategoryName)) &&
         normalizeCurrency(card?.currency) === currency &&
         expenseDate >= start &&
-        expenseDate <= end
+        expenseDate < end
       );
     })
     .reduce((total, expense) => total + Number(expense.amount), 0);

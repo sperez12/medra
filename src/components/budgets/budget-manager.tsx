@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { dedupeCategories, findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Budget, Category, CreditCard, Expense } from "@/types/finance";
@@ -33,6 +34,7 @@ export function BudgetManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
@@ -81,7 +83,8 @@ export function BudgetManager() {
     }
 
     setBudgets((budgetData ?? []) as Budget[]);
-    setCategories((categoryData ?? []) as Category[]);
+    setAllCategories((categoryData ?? []) as Category[]);
+    setCategories(dedupeCategories((categoryData ?? []) as Category[]));
     setCards((cardData ?? []) as CreditCard[]);
     setExpenses((expenseData ?? []) as Expense[]);
     setIsLoading(false);
@@ -194,7 +197,7 @@ export function BudgetManager() {
     await loadData();
   }
 
-  const budgetSummaries = budgets.map((budget) => buildBudgetSummary(budget, categories, cards, expenses));
+  const budgetSummaries = budgets.map((budget) => buildBudgetSummary(budget, allCategories, cards, expenses));
   const activeBudgetSummaries = budgetSummaries.filter(({ budget }) => budget.is_active);
   const exceededBudgets = activeBudgetSummaries.filter((summary) => summary.status === "exceeded");
   const nearLimitBudgets = activeBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
@@ -351,17 +354,20 @@ function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onE
 
 function buildBudgetSummary(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]): BudgetSummary {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
-  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const currency = normalizeCurrency(budget.currency);
+  const budgetCategoryName = normalizeCategoryName(findCategoryName(categories, budget.category_id));
   const spent = expenses
     .filter((expense) => {
       const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
       const card = cards.find((item) => item.id === expense.credit_card_id);
       return (
-        expense.category_id === budget.category_id &&
+        (expense.category_id === budget.category_id ||
+          isSameCategoryName(categories, expense.category_id, budget.category_id) ||
+          Boolean(budgetCategoryName && normalizeCategoryName(findCategoryName(categories, expense.category_id)) === budgetCategoryName)) &&
         normalizeCurrency(card?.currency) === currency &&
         expenseDate >= start &&
-        expenseDate <= end
+        expenseDate < end
       );
     })
     .reduce((total, expense) => total + Number(expense.amount), 0);
@@ -370,7 +376,7 @@ function buildBudgetSummary(budget: Budget, categories: Category[], cards: Credi
 
   return {
     budget,
-    categoryName: categories.find((category) => category.id === budget.category_id)?.name ?? "Categoria no encontrada",
+    categoryName: findCategoryName(categories, budget.category_id) || "Categoria no encontrada",
     spent,
     remaining: limit - spent,
     usedPercent,
