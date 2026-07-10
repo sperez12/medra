@@ -53,19 +53,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: getFriendlyError(assetError.message) }, { status: 400 });
   }
 
-  const requests = ((assets ?? []) as AssetRow[]).map(toPriceRequest).filter((item): item is PriceProviderRequest => Boolean(item));
+  const cryptoAssets = (assets ?? []) as AssetRow[];
+  const requests = cryptoAssets.map(toPriceRequest).filter((item): item is PriceProviderRequest => Boolean(item));
+  const missingProviderIdAssets = cryptoAssets.filter((asset) => {
+    const provider = asset.price_provider || asset.price_source;
+    return provider === "coingecko" && !asset.provider_asset_id?.trim() && !asset.coingecko_id?.trim();
+  });
 
-  if (requests.length === 0) {
+  if (cryptoAssets.length === 0) {
     return NextResponse.json({
       updated: 0,
       failed: 0,
-      message: "No hay activos cripto con proveedor automatico para actualizar.",
+      message: "No hay activos cripto configurados con CoinGecko. Edita un activo cripto y selecciona CoinGecko como fuente de precio.",
+    });
+  }
+
+  if (requests.length === 0 && missingProviderIdAssets.length > 0) {
+    const names = missingProviderIdAssets.map((asset) => asset.symbol).join(", ");
+    return NextResponse.json({
+      updated: 0,
+      failed: missingProviderIdAssets.length,
+      failures: missingProviderIdAssets.map((asset) => `${asset.symbol}: falta CoinGecko ID`),
+      message: `Hay activos cripto con CoinGecko, pero les falta el CoinGecko ID: ${names}. Ejemplo: BTC debe usar bitcoin.`,
     });
   }
 
   const results = await fetchPricesByProvider(requests);
   let updated = 0;
-  const failures: string[] = [];
+  const failures: string[] = missingProviderIdAssets.map((asset) => `${asset.symbol}: falta CoinGecko ID`);
+
+  for (const asset of missingProviderIdAssets) {
+    await supabase
+      .from("assets")
+      .update({ last_price_error: "Falta CoinGecko ID. Ejemplo: BTC debe usar bitcoin." })
+      .eq("id", asset.id)
+      .eq("user_id", userData.user.id);
+  }
 
   for (const result of results) {
     const requestInfo = requests.find((item) => item.assetId === result.assetId);
@@ -103,7 +126,7 @@ export async function POST(request: Request) {
     failures,
     message:
       failures.length > 0
-        ? `Se actualizaron ${updated} activo(s). Algunos quedaron con error: ${failures.join(" | ")}.`
+        ? `Actualizacion parcial: se actualizaron ${updated} activo(s), pero algunos requieren revision: ${failures.join(" | ")}. El precio anterior se conservo.`
         : `Se actualizaron ${updated} precio(s) correctamente.`,
   });
 }

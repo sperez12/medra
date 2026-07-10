@@ -41,6 +41,19 @@ const priceSourceLabels: Record<InvestmentPriceSource, string> = {
   twelve_data: "Twelve Data (despues)",
 };
 
+const commonCoinGeckoIds = [
+  ["BTC", "bitcoin"],
+  ["ETH", "ethereum"],
+  ["SOL", "solana"],
+  ["BNB", "binancecoin"],
+  ["XRP", "ripple"],
+  ["ADA", "cardano"],
+  ["DOGE", "dogecoin"],
+  ["AVAX", "avalanche-2"],
+  ["DOT", "polkadot"],
+  ["MATIC/POL", "polygon-ecosystem-token"],
+];
+
 const transactionTypeLabels: Record<InvestmentTransactionType, string> = {
   buy: "Compra",
   sell: "Venta",
@@ -333,7 +346,10 @@ export function InvestmentManager() {
         return;
       }
 
-      setMessage({ type: result.updated > 0 ? "success" : "info", text: result.message ?? "Actualizacion de precios cripto terminada." });
+      setMessage({
+        type: result.failed > 0 ? "error" : result.updated > 0 ? "success" : "info",
+        text: result.message ?? "Actualizacion de precios cripto terminada.",
+      });
       await loadData();
     } catch {
       setMessage({ type: "error", text: "No pude conectar con el actualizador de precios. Se conservaron los precios actuales." });
@@ -580,9 +596,14 @@ function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
             {form.price_source === "coingecko" ? (
               <div className="space-y-2">
                 <TextInput label="CoinGecko ID" placeholder="bitcoin, ethereum, solana..." value={form.coingecko_id} onChange={(value) => onChange({ ...form, coingecko_id: value })} />
-                <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                  CoinGecko usa IDs, no siempre simbolos. Ejemplos: BTC = bitcoin, ETH = ethereum, SOL = solana.
-                </p>
+                <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-medium text-slate-700">CoinGecko usa IDs, no simbolos. BTC no basta; debe ser bitcoin.</p>
+                  <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                    {commonCoinGeckoIds.map(([symbol, id]) => (
+                      <p key={symbol}>{symbol} = {id}</p>
+                    ))}
+                  </div>
+                </div>
               </div>
             ) : null}
           </>
@@ -673,8 +694,8 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
 function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
   return (
     <TableCard title="Holdings">
-      <table className="w-full min-w-[1040px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[1120px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {rows.map(({ holding, platform, asset, value }) => (
             <tr className="border-b border-slate-100" key={holding.id}>
@@ -685,6 +706,7 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
               <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
               <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
+              <td className="py-3 pr-4">{asset?.last_price_error ? <span className="text-red-700">{asset.last_price_error}</span> : "Sin error"}</td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
               <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
@@ -700,8 +722,8 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
 function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; onEdit: (asset: InvestmentAsset) => void; onDelete: (asset: InvestmentAsset) => void }) {
   return (
     <TableCard title="Activos">
-      <table className="w-full min-w-[680px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio manual</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[900px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {assets.map((asset) => (
             <tr className="border-b border-slate-100" key={asset.id}>
@@ -709,6 +731,9 @@ function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; 
               <td className="py-3 pr-4">{asset.name}</td>
               <td className="py-3 pr-4">{assetTypeLabels[asset.asset_type]}</td>
               <td className="py-3 pr-4">{formatCurrency(Number(asset.current_price), asset.currency)}</td>
+              <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
+              <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
+              <td className="py-3 pr-4">{asset.last_price_error ? <span className="text-red-700">{asset.last_price_error}</span> : "Sin error"}</td>
               <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(asset)} onDelete={() => onDelete(asset)} /></td>
             </tr>

@@ -26,21 +26,21 @@ export const coingeckoProvider: PriceProvider = {
       });
 
       if (!response.ok) {
-        return requests.map((request) => errorResult(request, `CoinGecko no respondio correctamente. Codigo: ${response.status}.`));
+        return requests.map((request) => errorResult(request, `CoinGecko no respondio correctamente (codigo ${response.status}). Se conservo el precio anterior.`));
       }
 
       prices = await response.json();
     } catch {
-      return requests.map((request) => errorResult(request, "No pude conectar con CoinGecko."));
+      return requests.map((request) => errorResult(request, "No pude conectar con CoinGecko. Revisa internet o intenta mas tarde. Se conservo el precio anterior."));
     }
 
     const updatedAt = new Date().toISOString();
     return requests.map((request) => {
       const providerAssetId = request.providerAssetId?.trim().toLowerCase();
-      if (!providerAssetId) return errorResult(request, "Falta CoinGecko ID.");
+      if (!providerAssetId) return errorResult(request, "Falta CoinGecko ID. Ejemplo: BTC debe usar bitcoin.");
 
       const price = prices[providerAssetId]?.[request.currency.toLowerCase()];
-      if (!Number.isFinite(price)) return errorResult(request, `CoinGecko no encontro precio para ${providerAssetId}.`);
+      if (!Number.isFinite(price)) return errorResult(request, `CoinGecko no encontro el ID "${providerAssetId}". Revisa que sea el ID, no solo el simbolo.`);
 
       return {
         assetId: request.assetId,
