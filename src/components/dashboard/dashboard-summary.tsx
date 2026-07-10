@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
-import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency } from "@/lib/currencies";
+import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -11,7 +11,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
-import type { Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
+import type { Account, AccountMovement, AccountMovementType, AccountTransfer, Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   minimum: "Pago minimo",
@@ -19,6 +19,13 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   no_interest: "Pago para no generar intereses",
   total: "Pago total",
   other: "Otro",
+};
+
+const movementTypeLabels: Record<AccountMovementType, string> = {
+  income: "Ingreso",
+  expense: "Egreso",
+  transfer: "Transferencia",
+  adjustment: "Ajuste",
 };
 
 type Message = {
@@ -32,6 +39,9 @@ export function DashboardSummary() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
+  const [accountTransfers, setAccountTransfers] = useState<AccountTransfer[]>([]);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -60,6 +70,9 @@ export function DashboardSummary() {
       { data: expenseData, error: expenseError },
       { data: paymentData, error: paymentError },
       { data: categoryData, error: categoryError },
+      { data: accountData, error: accountError },
+      { data: movementData, error: movementError },
+      { data: transferData, error: transferError },
     ] = await Promise.all([
       supabase
         .from("credit_cards")
@@ -70,9 +83,24 @@ export function DashboardSummary() {
       supabase.from("expenses").select("*").eq("user_id", userData.user.id).order("expense_date", { ascending: false }),
       supabase.from("payments").select("*").eq("user_id", userData.user.id).order("payment_date", { ascending: false }),
       supabase.from("categories").select("*").eq("user_id", userData.user.id),
+      supabase
+        .from("accounts")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("account_movements")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("movement_date", { ascending: false }),
+      supabase
+        .from("account_transfers")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("transfer_date", { ascending: false }),
     ]);
 
-    if (cardError || expenseError || paymentError || categoryError) {
+    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || transferError) {
       setMessage({
         type: "error",
         text:
@@ -80,6 +108,9 @@ export function DashboardSummary() {
           expenseError?.message ??
           paymentError?.message ??
           categoryError?.message ??
+          accountError?.message ??
+          movementError?.message ??
+          transferError?.message ??
           "No se pudo cargar el dashboard.",
       });
       setIsLoading(false);
@@ -90,6 +121,9 @@ export function DashboardSummary() {
     setExpenses((expenseData ?? []) as Expense[]);
     setPayments((paymentData ?? []) as Payment[]);
     setCategories((categoryData ?? []) as Category[]);
+    setAccounts((accountData ?? []) as Account[]);
+    setAccountMovements((movementData ?? []) as AccountMovement[]);
+    setAccountTransfers((transferData ?? []) as AccountTransfer[]);
     setIsLoading(false);
   }
 
@@ -118,6 +152,16 @@ export function DashboardSummary() {
   const totalPaidByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.paid, (item) => item.card.currency);
   const totalPendingByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.pending, (item) => item.card.currency);
   const totalAvailableByCurrency = groupMoneyByCurrency(cardSummaries, (item) => item.available, (item) => item.card.currency);
+  const accountSummaries = accounts.map((account) => ({
+    account,
+    balance: calculateAccountBalance(account, accountMovements),
+  }));
+  const activeAccountSummaries = accountSummaries.filter(({ account }) => account.is_active);
+  const accountTotalsByCurrency = groupMoneyByCurrency(activeAccountSummaries, (item) => item.balance, (item) => item.account.currency);
+  const netWorthByCurrency = buildNetWorthByCurrency(accountTotalsByCurrency, totalPendingByCurrency);
+  const topAccounts = [...activeAccountSummaries].sort((a, b) => b.balance - a.balance).slice(0, 5);
+  const recentAccountMovements = accountMovements.slice(0, 6);
+  const recentAccountTransfers = accountTransfers.slice(0, 5);
   const summaryCurrencies = Array.from(
     new Set([
       ...totalSpentByCurrency,
@@ -175,7 +219,10 @@ export function DashboardSummary() {
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
         <p className="mt-2 text-slate-600">
-          Resumen global de tus tarjetas, gastos y pagos. Vista actual: {getPeriodLabel(periodFilter)}.
+          Resumen global de tus tarjetas, cuentas, gastos y pagos. Vista actual: {getPeriodLabel(periodFilter)}.
+        </p>
+        <p className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Los totales se muestran por moneda. Todavia no hay conversion automatica entre monedas.
         </p>
       </section>
 
@@ -190,8 +237,40 @@ export function DashboardSummary() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <SmallStat label="Tarjetas activas" value={cards.length} />
+        <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
         <SmallStat label="Proximas a corte" value={cardsNearCut.length} />
         <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Patrimonio estimado por moneda</h2>
+          <p className="text-sm text-slate-600">
+            Cuentas menos saldo pendiente de tarjetas. Sin conversion automatica entre monedas.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {netWorthByCurrency.map((row) => (
+            <NetWorthCard key={row.currency} row={row} />
+          ))}
+        </div>
+        {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas ni saldos de tarjeta para calcular patrimonio." /> : null}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Cuentas</h2>
+          <p className="text-sm text-slate-600">Resumen de saldos, movimientos y transferencias recientes.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Total en cuentas" value={<MoneyTotals totals={accountTotalsByCurrency} />} strong />
+          <SummaryCard label="Cuentas activas" value={String(activeAccountSummaries.length)} />
+        </div>
+        <div className="mt-4 grid gap-4 xl:grid-cols-3">
+          <TopAccountsList accounts={topAccounts} />
+          <RecentAccountMovementsTable accounts={accounts} movements={recentAccountMovements} />
+          <RecentTransfersTable accounts={accounts} transfers={recentAccountTransfers} />
+        </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -277,12 +356,54 @@ function getCategoryName(categories: Category[], categoryId: string | null) {
   return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
 }
 
+function formatDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+}
+
 function getCardCurrency(cards: CreditCard[], cardId: string | null) {
   return cards.find((card) => card.id === cardId)?.currency ?? DEFAULT_CURRENCY;
 }
 
+function getAccountName(accounts: Account[], accountId: string | null) {
+  return accounts.find((account) => account.id === accountId)?.name ?? "Cuenta no encontrada";
+}
+
+function getAccountCurrency(accounts: Account[], accountId: string | null) {
+  return accounts.find((account) => account.id === accountId)?.currency ?? DEFAULT_CURRENCY;
+}
+
 function getTotalForCurrency(totals: Array<{ currency: string; amount: number }>, currency: string) {
   return totals.find((total) => total.currency === currency)?.amount ?? 0;
+}
+
+function calculateAccountBalance(account: Account, movements: AccountMovement[]) {
+  return movements
+    .filter((movement) => movement.account_id === account.id)
+    .reduce((balance, movement) => {
+      if (movement.movement_type === "income") return balance + Number(movement.amount);
+      if (movement.movement_type === "expense") return balance - Number(movement.amount);
+      if (movement.movement_type === "adjustment") return balance + Number(movement.amount);
+      return balance;
+    }, Number(account.initial_balance));
+}
+
+function buildNetWorthByCurrency(
+  accountTotals: Array<{ currency: string; amount: number }>,
+  pendingTotals: Array<{ currency: string; amount: number }>
+) {
+  const currencies = Array.from(new Set([...accountTotals, ...pendingTotals].map((total) => normalizeCurrency(total.currency)))).sort();
+
+  return currencies.map((currency) => {
+    const accounts = getTotalForCurrency(accountTotals, currency);
+    const pendingCards = getTotalForCurrency(pendingTotals, currency);
+
+    return {
+      currency,
+      accounts,
+      pendingCards,
+      netWorth: accounts - pendingCards,
+    };
+  });
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
@@ -313,6 +434,113 @@ function SmallStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function NetWorthCard({
+  row,
+}: {
+  row: {
+    currency: string;
+    accounts: number;
+    pendingCards: number;
+    netWorth: number;
+  };
+}) {
+  return (
+    <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
+      <p className="mt-2 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
+      <div className="mt-3 space-y-1 text-sm text-slate-600">
+        <p>Cuentas: {formatCurrency(row.accounts, row.currency)}</p>
+        <p>Pendiente tarjetas: {formatCurrency(row.pendingCards, row.currency)}</p>
+      </div>
+    </article>
+  );
+}
+
+function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; balance: number }> }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Cuentas con mayor saldo</h3>
+      <div className="mt-3 space-y-3">
+        {accounts.map(({ account, balance }) => (
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={account.id}>
+            <div>
+              <p className="font-medium text-slate-900">{account.name}</p>
+              <p className="text-sm text-slate-500">{account.institution || "Sin institucion"} - {account.currency}</p>
+            </div>
+            <p className="text-right text-sm font-semibold text-slate-950">{formatCurrency(balance, account.currency)}</p>
+          </div>
+        ))}
+      </div>
+      {accounts.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas activas." /> : null}
+    </div>
+  );
+}
+
+function RecentAccountMovementsTable({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Ultimos movimientos</h3>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[520px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-3 font-medium">Fecha</th>
+              <th className="py-2 pr-3 font-medium">Cuenta</th>
+              <th className="py-2 pr-3 font-medium">Tipo</th>
+              <th className="py-2 text-right font-medium">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {movements.map((movement) => (
+              <tr className="border-b border-slate-100" key={movement.id}>
+                <td className="py-3 pr-3 text-slate-700">{formatDate(movement.movement_date)}</td>
+                <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, movement.account_id)}</td>
+                <td className="py-3 pr-3 text-slate-700">
+                  {movementTypeLabels[movement.movement_type]}
+                  {movement.transfer_id ? <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">Transf.</span> : null}
+                </td>
+                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(movement.amount), getAccountCurrency(accounts, movement.account_id))}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {movements.length === 0 ? <EmptyTableMessage text="Aun no hay movimientos de cuenta." /> : null}
+    </div>
+  );
+}
+
+function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; transfers: AccountTransfer[] }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Transferencias recientes</h3>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[520px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-3 font-medium">Fecha</th>
+              <th className="py-2 pr-3 font-medium">Origen</th>
+              <th className="py-2 pr-3 font-medium">Destino</th>
+              <th className="py-2 text-right font-medium">Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transfers.map((transfer) => (
+              <tr className="border-b border-slate-100" key={transfer.id}>
+                <td className="py-3 pr-3 text-slate-700">{formatDate(transfer.transfer_date)}</td>
+                <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.from_account_id)}</td>
+                <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.to_account_id)}</td>
+                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(transfer.amount), transfer.currency)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {transfers.length === 0 ? <EmptyTableMessage text="Aun no hay transferencias registradas." /> : null}
     </div>
   );
 }
