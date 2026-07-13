@@ -216,3 +216,14 @@ export type NetWorthSnapshot = {
   notes: string | null;
   created_at: string;
 };
+
+export type ManualExchangeRate = {
+  id: string;
+  user_id: string;
+  rate_date: string;
+  from_currency: CurrencyCode | string;
+  to_currency: CurrencyCode | string;
+  rate: number;
+  notes: string | null;
+  created_at: string;
+};

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
-import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -20,6 +20,7 @@ import type {
   Expense,
   Holding,
   InvestmentAsset,
+  ManualExchangeRate,
   NetWorthSnapshot,
   Payment,
   PaymentType,
@@ -62,6 +63,27 @@ type SnapshotHistoryRow = {
   percentChange: number | null;
 };
 
+type ExchangeRateForm = {
+  rate_date: string;
+  from_currency: string;
+  to_currency: string;
+  rate: string;
+  notes: string;
+};
+
+type ConsolidatedNetWorthResult = {
+  baseCurrency: string;
+  total: number;
+  rows: Array<{
+    currency: string;
+    originalAmount: number;
+    convertedAmount: number | null;
+    rate: ManualExchangeRate | null;
+    missingRate: boolean;
+  }>;
+  missingRates: string[];
+};
+
 export function BasicReports() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
@@ -73,12 +95,22 @@ export function BasicReports() {
   const [assets, setAssets] = useState<InvestmentAsset[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
+  const [exchangeRates, setExchangeRates] = useState<ManualExchangeRate[]>([]);
   const [snapshotNotes, setSnapshotNotes] = useState("");
+  const [baseCurrency, setBaseCurrency] = useState(DEFAULT_CURRENCY);
+  const [exchangeRateForm, setExchangeRateForm] = useState<ExchangeRateForm>({
+    rate_date: new Date().toISOString().slice(0, 10),
+    from_currency: "USD",
+    to_currency: DEFAULT_CURRENCY,
+    rate: "",
+    notes: "",
+  });
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
+  const [isSavingExchangeRate, setIsSavingExchangeRate] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -111,6 +143,7 @@ export function BasicReports() {
       { data: assetData, error: assetError },
       { data: holdingData, error: holdingError },
       { data: snapshotData, error: snapshotError },
+      { data: exchangeRateData, error: exchangeRateError },
     ] = await Promise.all([
       supabase.from("credit_cards").select("*").eq("user_id", userData.user.id).order("name"),
       supabase.from("expenses").select("*").eq("user_id", userData.user.id).order("expense_date", { ascending: false }),
@@ -126,9 +159,27 @@ export function BasicReports() {
         .eq("user_id", userData.user.id)
         .order("snapshot_date", { ascending: false })
         .limit(30),
+      supabase
+        .from("manual_exchange_rates")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("rate_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(30),
     ]);
 
-    if (cardError || expenseError || paymentError || categoryError || accountError || movementError || assetError || holdingError || snapshotError) {
+    if (
+      cardError ||
+      expenseError ||
+      paymentError ||
+      categoryError ||
+      accountError ||
+      movementError ||
+      assetError ||
+      holdingError ||
+      snapshotError ||
+      exchangeRateError
+    ) {
       setMessage({
         type: "error",
         text:
@@ -141,6 +192,7 @@ export function BasicReports() {
           assetError?.message ??
           holdingError?.message ??
           (snapshotError ? getFriendlySnapshotError(snapshotError.message) : null) ??
+          (exchangeRateError ? getFriendlyExchangeRateError(exchangeRateError.message) : null) ??
           "No se pudieron cargar los reportes.",
       });
       setHasLoadedReports(false);
@@ -157,6 +209,7 @@ export function BasicReports() {
     setAssets((assetData ?? []) as InvestmentAsset[]);
     setHoldings((holdingData ?? []) as Holding[]);
     setSnapshots((snapshotData ?? []) as NetWorthSnapshot[]);
+    setExchangeRates((exchangeRateData ?? []) as ManualExchangeRate[]);
     setHasLoadedReports(true);
     setIsLoading(false);
   }
@@ -198,6 +251,7 @@ export function BasicReports() {
     periodFilter,
   });
   const snapshotHistoryRows = buildSnapshotHistoryRows(snapshots);
+  const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, exchangeRates, baseCurrency);
   const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
   const topCard = expensesByCard[0] ? `${expensesByCard[0].label} (${expensesByCard[0].currency})` : "Sin datos";
   const dayCount = getPeriodDayCount(periodFilter, cards);
@@ -262,6 +316,61 @@ export function BasicReports() {
     if (error) return setMessage({ type: "error", text: getFriendlySnapshotError(error.message) });
 
     setMessage({ type: "success", text: "Snapshot borrado correctamente." });
+    await loadData();
+  }
+
+  async function saveExchangeRate() {
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta configurar Supabase para guardar tipos de cambio." });
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar tipos de cambio." });
+
+    const fromCurrency = normalizeCurrency(exchangeRateForm.from_currency);
+    const toCurrency = normalizeCurrency(exchangeRateForm.to_currency);
+    const rate = Number(exchangeRateForm.rate);
+
+    if (!exchangeRateForm.rate_date) {
+      return setMessage({ type: "error", text: "Elige una fecha para el tipo de cambio." });
+    }
+    if (fromCurrency === toCurrency) {
+      return setMessage({ type: "error", text: "La moneda origen y destino deben ser diferentes." });
+    }
+    if (!Number.isFinite(rate) || rate <= 0) {
+      return setMessage({ type: "error", text: "La tasa debe ser mayor a 0. Ejemplo: USD a MXN = 17.25." });
+    }
+
+    setIsSavingExchangeRate(true);
+    const { error } = await supabase.from("manual_exchange_rates").insert({
+      user_id: userId,
+      rate_date: exchangeRateForm.rate_date,
+      from_currency: fromCurrency,
+      to_currency: toCurrency,
+      rate,
+      notes: exchangeRateForm.notes.trim() || null,
+    });
+    setIsSavingExchangeRate(false);
+
+    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error.message) });
+
+    setExchangeRateForm((current) => ({ ...current, rate: "", notes: "" }));
+    setMessage({ type: "success", text: "Tipo de cambio guardado correctamente." });
+    await loadData();
+  }
+
+  async function deleteExchangeRate(rate: ManualExchangeRate) {
+    setMessage(null);
+    if (!supabase) return;
+    const confirmed = window.confirm(
+      `Vas a borrar el tipo de cambio ${rate.from_currency} -> ${rate.to_currency} del ${formatDate(rate.rate_date)}.\n\nEsto solo afecta reportes visuales, no tus saldos originales.`
+    );
+    if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun tipo de cambio." });
+
+    const { error } = await supabase.from("manual_exchange_rates").delete().eq("id", rate.id);
+    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error.message) });
+
+    setMessage({ type: "success", text: "Tipo de cambio borrado correctamente." });
     await loadData();
   }
 
@@ -338,6 +447,22 @@ export function BasicReports() {
           <SnapshotHistoryBars rows={snapshotHistoryRows} />
           <SnapshotsTable snapshots={snapshots.slice(0, 12)} onDelete={deleteSnapshot} />
         </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_420px]">
+        <ConsolidatedNetWorthSection
+          baseCurrency={baseCurrency}
+          onBaseCurrencyChange={setBaseCurrency}
+          result={consolidatedNetWorth}
+        />
+        <ExchangeRatesSection
+          form={exchangeRateForm}
+          isSaving={isSavingExchangeRate}
+          onChange={setExchangeRateForm}
+          onDelete={deleteExchangeRate}
+          onSave={saveExchangeRate}
+          rates={exchangeRates.slice(0, 8)}
+        />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -495,6 +620,76 @@ function buildSnapshotHistoryRows(snapshots: NetWorthSnapshot[]) {
       percentChange,
     };
   });
+}
+
+function buildConsolidatedNetWorth(
+  rows: NetWorthSnapshotRow[],
+  rates: ManualExchangeRate[],
+  baseCurrency: string
+): ConsolidatedNetWorthResult {
+  const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
+  let total = 0;
+  const missingRates: string[] = [];
+
+  const convertedRows = rows.map((row) => {
+    const currency = normalizeCurrency(row.currency);
+    if (currency === normalizedBaseCurrency) {
+      total += row.netWorth;
+      return {
+        currency,
+        originalAmount: row.netWorth,
+        convertedAmount: row.netWorth,
+        rate: null,
+        missingRate: false,
+      };
+    }
+
+    const rate = findLatestExchangeRate(rates, currency, normalizedBaseCurrency);
+    if (!rate) {
+      missingRates.push(`${currency} -> ${normalizedBaseCurrency}`);
+      return {
+        currency,
+        originalAmount: row.netWorth,
+        convertedAmount: null,
+        rate: null,
+        missingRate: true,
+      };
+    }
+
+    const convertedAmount = row.netWorth * Number(rate.rate);
+    total += convertedAmount;
+    return {
+      currency,
+      originalAmount: row.netWorth,
+      convertedAmount,
+      rate,
+      missingRate: false,
+    };
+  });
+
+  return {
+    baseCurrency: normalizedBaseCurrency,
+    total,
+    rows: convertedRows,
+    missingRates,
+  };
+}
+
+function findLatestExchangeRate(rates: ManualExchangeRate[], fromCurrency: string, toCurrency: string) {
+  const normalizedFromCurrency = normalizeCurrency(fromCurrency);
+  const normalizedToCurrency = normalizeCurrency(toCurrency);
+
+  return [...rates]
+    .filter(
+      (rate) =>
+        normalizeCurrency(rate.from_currency) === normalizedFromCurrency &&
+        normalizeCurrency(rate.to_currency) === normalizedToCurrency
+    )
+    .sort((a, b) => {
+      const dateDiff = new Date(b.rate_date).getTime() - new Date(a.rate_date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    })[0] ?? null;
 }
 
 function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[]): ReportRow[] {
@@ -761,6 +956,182 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
   );
 }
 
+function ConsolidatedNetWorthSection({
+  baseCurrency,
+  onBaseCurrencyChange,
+  result,
+}: {
+  baseCurrency: string;
+  onBaseCurrencyChange: (currency: string) => void;
+  result: ConsolidatedNetWorthResult;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-950">Patrimonio consolidado estimado</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Conversion solo visual para reportes. Tus saldos originales no se modifican.
+          </p>
+        </div>
+        <label className="text-sm font-medium text-slate-700">
+          Moneda base
+          <CurrencySelect value={baseCurrency} onChange={onBaseCurrencyChange} />
+        </label>
+      </div>
+
+      <div className="mt-5 rounded-md bg-slate-950 p-4 text-white">
+        <p className="text-sm text-slate-300">Total consolidado visible</p>
+        <p className="mt-1 text-3xl font-bold">{formatCurrency(result.total, result.baseCurrency)}</p>
+      </div>
+
+      {result.missingRates.length > 0 ? (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Faltan tipos de cambio: {result.missingRates.join(", ")}. Esos montos no se sumaron al total consolidado.
+        </div>
+      ) : null}
+
+      <div className="mt-4 space-y-3">
+        {result.rows.map((row) => (
+          <div className="rounded-md border border-slate-200 p-3" key={row.currency}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
+                <p className="text-sm text-slate-600">Original: {formatCurrency(row.originalAmount, row.currency)}</p>
+              </div>
+              <div className="text-sm sm:text-right">
+                {row.convertedAmount === null ? (
+                  <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
+                ) : (
+                  <>
+                    <p className="font-semibold text-slate-950">{formatCurrency(row.convertedAmount, result.baseCurrency)}</p>
+                    <p className="text-xs text-slate-500">
+                      {row.rate ? `Tasa ${Number(row.rate.rate).toLocaleString("es-MX")} del ${formatDate(row.rate.rate_date)}` : "Sin conversion"}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {result.rows.length === 0 ? <EmptyMessage text="Aun no hay patrimonio por moneda para consolidar." /> : null}
+      </div>
+    </div>
+  );
+}
+
+function ExchangeRatesSection({
+  form,
+  isSaving,
+  onChange,
+  onDelete,
+  onSave,
+  rates,
+}: {
+  form: ExchangeRateForm;
+  isSaving: boolean;
+  onChange: (form: ExchangeRateForm) => void;
+  onDelete: (rate: ManualExchangeRate) => void;
+  onSave: () => void;
+  rates: ManualExchangeRate[];
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-xl font-semibold text-slate-950">Tipos de cambio manuales</h2>
+      <p className="mt-1 text-sm text-slate-600">Modelo: 1 unidad de moneda origen = tasa unidades de moneda destino.</p>
+
+      <div className="mt-4 grid gap-3">
+        <label className="text-sm font-medium text-slate-700">
+          Fecha
+          <input
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            onChange={(event) => onChange({ ...form, rate_date: event.target.value })}
+            type="date"
+            value={form.rate_date}
+          />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm font-medium text-slate-700">
+            Moneda origen
+            <CurrencySelect value={form.from_currency} onChange={(value) => onChange({ ...form, from_currency: value })} />
+          </label>
+          <label className="text-sm font-medium text-slate-700">
+            Moneda destino
+            <CurrencySelect value={form.to_currency} onChange={(value) => onChange({ ...form, to_currency: value })} />
+          </label>
+        </div>
+        <label className="text-sm font-medium text-slate-700">
+          Tasa
+          <input
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            min="0"
+            onChange={(event) => onChange({ ...form, rate: event.target.value })}
+            placeholder="Ej. 17.25"
+            step="0.0001"
+            type="number"
+            value={form.rate}
+          />
+        </label>
+        <label className="text-sm font-medium text-slate-700">
+          Notas opcionales
+          <input
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+            onChange={(event) => onChange({ ...form, notes: event.target.value })}
+            placeholder="Ej. tipo de cambio de mi banco"
+            value={form.notes}
+          />
+        </label>
+        <button
+          className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          disabled={isSaving}
+          onClick={onSave}
+          type="button"
+        >
+          {isSaving ? "Guardando..." : "Guardar tipo de cambio"}
+        </button>
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-slate-950">Tipos recientes</h3>
+        <div className="mt-3 space-y-2">
+          {rates.map((rate) => (
+            <div className="rounded-md border border-slate-200 p-3" key={rate.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">
+                    {`${rate.from_currency} -> ${rate.to_currency}: ${Number(rate.rate).toLocaleString("es-MX")}`}
+                  </p>
+                  <p className="text-xs text-slate-500">{formatDate(rate.rate_date)}{rate.notes ? ` | ${rate.notes}` : ""}</p>
+                </div>
+                <button className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => onDelete(rate)} type="button">
+                  Borrar
+                </button>
+              </div>
+            </div>
+          ))}
+          {rates.length === 0 ? <EmptyMessage text="Todavia no tienes tipos de cambio manuales." /> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CurrencySelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <select
+      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+      onChange={(event) => onChange(event.target.value)}
+      value={value}
+    >
+      {SUPPORTED_CURRENCIES.map((currency) => (
+        <option key={currency.code} value={currency.code}>
+          {currency.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function BarReport({ title, rows, emptyText }: { title: string; rows: ReportRow[]; emptyText: string }) {
   const max = Math.max(...rows.map((row) => row.value), 1);
 
@@ -929,6 +1300,19 @@ function getFriendlySnapshotError(error: string) {
     return "Ya existe un snapshot para esa fecha y moneda. Usa la confirmacion para actualizarlo.";
   }
   return `No se pudo completar la accion de historial de patrimonio. Detalle: ${error}`;
+}
+
+function getFriendlyExchangeRateError(error: string) {
+  if (error.includes("manual_exchange_rates") || error.includes("schema cache")) {
+    return "Falta crear la tabla de tipos de cambio manuales. Ejecuta docs/ADD_MANUAL_EXCHANGE_RATES.sql en Supabase.";
+  }
+  if (error.includes("duplicate") || error.includes("unique")) {
+    return "Ya existe un tipo de cambio para esa fecha, moneda origen y moneda destino.";
+  }
+  if (error.includes("check")) {
+    return "Revisa el tipo de cambio: la tasa debe ser mayor a 0 y las monedas deben ser diferentes.";
+  }
+  return `No se pudo completar la accion de tipos de cambio. Detalle: ${error}`;
 }
 
 function StatusPanel({ text, tone = "info" }: { text: string; tone?: "error" | "info" | "success" }) {
