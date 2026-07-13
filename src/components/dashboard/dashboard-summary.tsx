@@ -50,6 +50,17 @@ type Message = {
   text: string;
 };
 
+type DashboardCardSummary = {
+  card: CreditCard;
+  spent: number;
+  paid: number;
+  pending: number;
+  available: number;
+  usagePercent: number;
+  daysToCut: number;
+  daysToPayment: number;
+};
+
 export function DashboardSummary() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
@@ -187,13 +198,14 @@ export function DashboardSummary() {
     setIsLoading(false);
   }
 
-  const cardSummaries = cards.map((card) => {
+  const cardSummaries: DashboardCardSummary[] = cards.map((card) => {
     const period = getRangeForCard(periodFilter, card);
     const spent = sumExpensesForCardPeriod(expenses, card.id, period.start, period.end);
     const paid = sumPaymentsForCardPeriod(payments, card.id, period.start, period.end);
     const pending = Math.max(spent - paid, 0);
     const limit = Number(card.credit_limit);
     const available = Math.max(limit - pending, 0);
+    const usagePercent = limit > 0 ? (pending / limit) * 100 : 0;
     const daysToCut = getDaysUntilDay(card.statement_cut_day);
     const daysToPayment = getDaysUntilDay(card.payment_due_day);
 
@@ -203,6 +215,7 @@ export function DashboardSummary() {
       paid,
       pending,
       available,
+      usagePercent,
       daysToCut,
       daysToPayment,
     };
@@ -253,6 +266,15 @@ export function DashboardSummary() {
   ).sort();
   const cardsNearCut = cardSummaries.filter((item) => item.daysToCut <= 7);
   const cardsNearPayment = cardSummaries.filter((item) => item.daysToPayment <= 7);
+  const averageCreditUsage =
+    cardSummaries.length > 0
+      ? cardSummaries.reduce((total, summary) => total + summary.usagePercent, 0) / cardSummaries.length
+      : 0;
+  const cardWithHighestPending = [...cardSummaries].sort((a, b) => b.pending - a.pending)[0];
+  const cardWithHighestUsage = [...cardSummaries].sort((a, b) => b.usagePercent - a.usagePercent)[0];
+  const mainCardSummaries = [...cardSummaries]
+    .sort((a, b) => b.pending - a.pending || b.usagePercent - a.usagePercent)
+    .slice(0, 6);
   const filteredExpenses = expenses.filter((expense) =>
     isDateInSelectedPeriod({
       dateValue: expense.expense_date,
@@ -309,13 +331,6 @@ export function DashboardSummary() {
 
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Gastado del periodo" value={<MoneyTotals totals={totalSpentByCurrency} />} />
-        <SummaryCard label="Pagado del periodo" value={<MoneyTotals totals={totalPaidByCurrency} />} />
-        <SummaryCard label="Saldo pendiente estimado" value={<MoneyTotals totals={totalPendingByCurrency} />} strong />
-        <SummaryCard label="Credito disponible estimado" value={<MoneyTotals totals={totalAvailableByCurrency} />} />
-      </section>
-
       <section className="grid gap-4 md:grid-cols-3">
         <SmallStat label="Tarjetas activas" value={cards.length} />
         <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
@@ -338,6 +353,32 @@ export function DashboardSummary() {
           ))}
         </div>
         {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas, inversiones ni saldos de tarjeta para calcular patrimonio." /> : null}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-semibold text-slate-950">Resumen de tarjetas</h2>
+          <p className="text-sm text-slate-600">
+            Vista rapida del periodo seleccionado, separada por moneda y sin mezclar saldos.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Tarjetas activas" value={String(cards.length)} />
+          <SummaryCard label="Deuda pendiente" value={<MoneyTotals totals={totalPendingByCurrency} />} strong />
+          <SummaryCard label="Credito disponible" value={<MoneyTotals totals={totalAvailableByCurrency} />} />
+          <SummaryCard label="Uso promedio" value={`${averageCreditUsage.toFixed(1)}%`} />
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <CardHighlight title="Mayor saldo pendiente" summary={cardWithHighestPending} />
+          <CardHighlight title="Mayor porcentaje usado" summary={cardWithHighestUsage} showUsage />
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_1.4fr]">
+          <CardCurrencySummary rows={visualSummaryRows} />
+          <MainCardsTable summaries={mainCardSummaries} />
+        </div>
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -398,24 +439,6 @@ export function DashboardSummary() {
           <TopAccountsList accounts={topAccounts} />
           <RecentAccountMovementsTable accounts={accounts} movements={recentAccountMovements} />
           <RecentTransfersTable accounts={accounts} transfers={recentAccountTransfers} />
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-slate-950">Resumen visual</h2>
-        <div className="mt-4 space-y-5">
-          {visualSummaryRows.map((row) => (
-            <div className="space-y-3" key={row.currency}>
-              <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
-              <DashboardBar label="Gastado" value={row.spent} max={row.max} currency={row.currency} colorClass="bg-red-500" />
-              <DashboardBar label="Pagado" value={row.paid} max={row.max} currency={row.currency} colorClass="bg-teal-600" />
-              <DashboardBar label="Pendiente" value={row.pending} max={row.max} currency={row.currency} colorClass="bg-amber-500" />
-              <DashboardBar label="Disponible" value={row.available} max={row.max} currency={row.currency} colorClass="bg-slate-500" />
-            </div>
-          ))}
-          {visualSummaryRows.length === 0 ? (
-            <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">Aun no hay datos para graficar.</p>
-          ) : null}
         </div>
       </section>
 
@@ -661,6 +684,119 @@ function SmallStat({ label, value }: { label: string; value: number }) {
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function CardHighlight({
+  title,
+  summary,
+  showUsage = false,
+}: {
+  title: string;
+  summary: DashboardCardSummary | undefined;
+  showUsage?: boolean;
+}) {
+  if (!summary || (summary.pending === 0 && summary.usagePercent === 0)) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-slate-700">{title}</p>
+        <p className="mt-2 text-sm text-slate-500">Aun no hay saldo pendiente en tarjetas.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+      <p className="text-sm font-semibold text-slate-700">{title}</p>
+      <div className="mt-2 flex flex-col gap-1">
+        <p className="font-semibold text-slate-950">{summary.card.name}</p>
+        <p className="text-sm text-slate-500">
+          {summary.card.bank} - **** {summary.card.last_four_digits} - {summary.card.currency}
+        </p>
+        <p className="text-sm text-slate-700">
+          {showUsage
+            ? `${summary.usagePercent.toFixed(1)}% usado`
+            : `${formatCurrency(summary.pending, summary.card.currency)} pendiente`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function CardCurrencySummary({
+  rows,
+}: {
+  rows: Array<{
+    currency: string;
+    spent: number;
+    paid: number;
+    pending: number;
+    available: number;
+    max: number;
+  }>;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Resumen por moneda</h3>
+      <div className="mt-4 space-y-5">
+        {rows.map((row) => (
+          <div className="space-y-3" key={row.currency}>
+            <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
+            <DashboardBar label="Gastado" value={row.spent} max={row.max} currency={row.currency} colorClass="bg-red-500" />
+            <DashboardBar label="Pagado" value={row.paid} max={row.max} currency={row.currency} colorClass="bg-teal-600" />
+            <DashboardBar label="Pendiente" value={row.pending} max={row.max} currency={row.currency} colorClass="bg-amber-500" />
+            <DashboardBar label="Disponible" value={row.available} max={row.max} currency={row.currency} colorClass="bg-slate-500" />
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 ? <EmptyTableMessage text="Aun no hay datos de tarjetas para resumir." /> : null}
+    </div>
+  );
+}
+
+function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h3 className="font-semibold text-slate-950">Tarjetas principales</h3>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[860px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-3 font-medium">Tarjeta</th>
+              <th className="py-2 pr-3 font-medium">Moneda</th>
+              <th className="py-2 pr-3 text-right font-medium">Gastado</th>
+              <th className="py-2 pr-3 text-right font-medium">Pagado</th>
+              <th className="py-2 pr-3 text-right font-medium">Pendiente</th>
+              <th className="py-2 pr-3 text-right font-medium">Disponible</th>
+              <th className="py-2 pr-3 text-right font-medium">Uso</th>
+              <th className="py-2 pr-3 text-right font-medium">Corte</th>
+              <th className="py-2 text-right font-medium">Pago</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map((summary) => (
+              <tr className="border-b border-slate-100" key={summary.card.id}>
+                <td className="py-3 pr-3">
+                  <p className="font-medium text-slate-950">{summary.card.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {summary.card.bank} - **** {summary.card.last_four_digits}
+                  </p>
+                </td>
+                <td className="py-3 pr-3 text-slate-700">{summary.card.currency}</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.spent, summary.card.currency)}</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.paid, summary.card.currency)}</td>
+                <td className="py-3 pr-3 text-right font-semibold text-slate-950">{formatCurrency(summary.pending, summary.card.currency)}</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.available, summary.card.currency)}</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{summary.usagePercent.toFixed(1)}%</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{summary.daysToCut} dia(s)</td>
+                <td className="py-3 text-right text-slate-700">{summary.daysToPayment} dia(s)</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {summaries.length === 0 ? <EmptyTableMessage text="Aun no hay tarjetas activas para mostrar." /> : null}
     </div>
   );
 }
