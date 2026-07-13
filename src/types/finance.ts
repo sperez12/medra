@@ -203,3 +203,16 @@ export type InvestmentTransaction = {
   description: string | null;
   created_at: string;
 };
+
+export type NetWorthSnapshot = {
+  id: string;
+  user_id: string;
+  snapshot_date: string;
+  currency: CurrencyCode | string;
+  total_accounts: number;
+  total_investments: number;
+  pending_credit_cards: number;
+  net_worth: number;
+  notes: string | null;
+  created_at: string;
+};
