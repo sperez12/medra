@@ -84,6 +84,13 @@ type ConsolidatedNetWorthResult = {
   missingRates: string[];
 };
 
+type SupabaseErrorLike = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
 export function BasicReports() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
@@ -192,7 +199,7 @@ export function BasicReports() {
           assetError?.message ??
           holdingError?.message ??
           (snapshotError ? getFriendlySnapshotError(snapshotError.message) : null) ??
-          (exchangeRateError ? getFriendlyExchangeRateError(exchangeRateError.message) : null) ??
+          (exchangeRateError ? getFriendlyExchangeRateError(exchangeRateError) : null) ??
           "No se pudieron cargar los reportes.",
       });
       setHasLoadedReports(false);
@@ -352,7 +359,7 @@ export function BasicReports() {
     });
     setIsSavingExchangeRate(false);
 
-    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error.message) });
+    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error) });
 
     setExchangeRateForm((current) => ({ ...current, rate: "", notes: "" }));
     setMessage({ type: "success", text: "Tipo de cambio guardado correctamente." });
@@ -368,7 +375,7 @@ export function BasicReports() {
     if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun tipo de cambio." });
 
     const { error } = await supabase.from("manual_exchange_rates").delete().eq("id", rate.id);
-    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error.message) });
+    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error) });
 
     setMessage({ type: "success", text: "Tipo de cambio borrado correctamente." });
     await loadData();
@@ -1302,17 +1309,35 @@ function getFriendlySnapshotError(error: string) {
   return `No se pudo completar la accion de historial de patrimonio. Detalle: ${error}`;
 }
 
-function getFriendlyExchangeRateError(error: string) {
-  if (error.includes("manual_exchange_rates") || error.includes("schema cache")) {
-    return "Falta crear la tabla de tipos de cambio manuales. Ejecuta docs/ADD_MANUAL_EXCHANGE_RATES.sql en Supabase.";
-  }
-  if (error.includes("duplicate") || error.includes("unique")) {
+function getFriendlyExchangeRateError(error: SupabaseErrorLike | string) {
+  const code = typeof error === "string" ? "" : error.code ?? "";
+  const message = typeof error === "string" ? error : error.message ?? "";
+  const details = typeof error === "string" ? "" : error.details ?? "";
+  const fullError = `${message} ${details}`.toLowerCase();
+
+  if (code === "23505" || fullError.includes("manual_exchange_rates_unique_user_date_pair")) {
     return "Ya existe un tipo de cambio para esa fecha, moneda origen y moneda destino.";
   }
-  if (error.includes("check")) {
+  if (code === "23514" && fullError.includes("manual_exchange_rates_different_currencies")) {
+    return "La moneda origen y destino deben ser diferentes.";
+  }
+  if (code === "23514" || fullError.includes("rate > 0")) {
+    return "La tasa debe ser mayor a 0.";
+  }
+  if (
+    code === "42P01" ||
+    fullError.includes('relation "manual_exchange_rates" does not exist') ||
+    fullError.includes("schema cache")
+  ) {
+    return "Falta crear la tabla de tipos de cambio manuales. Ejecuta docs/ADD_MANUAL_EXCHANGE_RATES.sql en Supabase.";
+  }
+  if (fullError.includes("duplicate") || fullError.includes("unique")) {
+    return "Ya existe un tipo de cambio para esa fecha, moneda origen y moneda destino.";
+  }
+  if (fullError.includes("check")) {
     return "Revisa el tipo de cambio: la tasa debe ser mayor a 0 y las monedas deben ser diferentes.";
   }
-  return `No se pudo completar la accion de tipos de cambio. Detalle: ${error}`;
+  return `No se pudo completar la accion de tipos de cambio. Detalle: ${message || "Error desconocido"}`;
 }
 
 function StatusPanel({ text, tone = "info" }: { text: string; tone?: "error" | "info" | "success" }) {
