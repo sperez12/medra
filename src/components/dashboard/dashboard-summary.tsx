@@ -399,7 +399,7 @@ export function DashboardSummary() {
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Inversiones</h2>
           <p className="text-sm text-slate-600">
-            Valores estimados con el precio actual registrado en cada activo. Los precios pueden ser manuales o venir de CoinGecko para cripto.
+            Valores estimados con el precio actual registrado en cada activo. Los precios pueden ser manuales, de CoinGecko o de Alpha Vantage.
           </p>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">

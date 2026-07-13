@@ -37,7 +37,7 @@ const priceSourceLabels: Record<InvestmentPriceSource, string> = {
   manual: "Manual",
   coingecko: "CoinGecko",
   coinmarketcap: "CoinMarketCap (despues)",
-  alpha_vantage: "Alpha Vantage (despues)",
+  alpha_vantage: "Alpha Vantage",
   twelve_data: "Twelve Data (despues)",
 };
 
@@ -53,6 +53,8 @@ const commonCoinGeckoIds = [
   ["DOT", "polkadot"],
   ["MATIC/POL", "polygon-ecosystem-token"],
 ];
+
+const commonAlphaVantageSymbols = ["AAPL", "MSFT", "VOO", "QQQ", "SPY", "VTI", "TSLA", "NVDA"];
 
 const transactionTypeLabels: Record<InvestmentTransactionType, string> = {
   buy: "Compra",
@@ -81,6 +83,7 @@ const emptyAssetForm = {
   current_price: "0",
   price_source: "manual" as InvestmentPriceSource,
   coingecko_id: "",
+  provider_symbol: "",
   description: "",
   is_active: true,
 };
@@ -229,13 +232,14 @@ export function InvestmentManager() {
     if (validation) return setMessage({ type: "error", text: validation });
 
     setIsSavingAsset(true);
-    const coingeckoValidationError = await validateCoinGeckoIdBeforeSave(assetForm);
-    if (coingeckoValidationError) {
+    const automaticPriceValidationError = await validateAutomaticPriceBeforeSave(assetForm);
+    if (automaticPriceValidationError) {
       setIsSavingAsset(false);
-      setMessage({ type: "error", text: coingeckoValidationError });
+      setMessage({ type: "error", text: automaticPriceValidationError });
       return;
     }
 
+    const priceProvider = getAssetPriceProvider(assetForm);
     const payload = {
       user_id: userId,
       symbol: assetForm.symbol.trim().toUpperCase(),
@@ -245,9 +249,9 @@ export function InvestmentManager() {
       current_price: Number(assetForm.current_price),
       price_source: assetForm.asset_type === "crypto" ? assetForm.price_source : "manual",
       coingecko_id: assetForm.asset_type === "crypto" && assetForm.price_source === "coingecko" ? assetForm.coingecko_id.trim().toLowerCase() : null,
-      price_provider: assetForm.asset_type === "crypto" ? assetForm.price_source : "manual",
+      price_provider: priceProvider,
       provider_asset_id: assetForm.asset_type === "crypto" && assetForm.price_source === "coingecko" ? assetForm.coingecko_id.trim().toLowerCase() : null,
-      provider_symbol: assetForm.symbol.trim().toUpperCase(),
+      provider_symbol: priceProvider === "alpha_vantage" ? getAlphaVantageSymbol(assetForm) : assetForm.symbol.trim().toUpperCase(),
       description: assetForm.description.trim() || null,
       is_active: assetForm.is_active,
     };
@@ -340,7 +344,7 @@ export function InvestmentManager() {
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
-      setMessage({ type: "error", text: "Primero inicia sesion para actualizar precios cripto." });
+      setMessage({ type: "error", text: "Primero inicia sesion para actualizar precios." });
       return;
     }
 
@@ -355,13 +359,13 @@ export function InvestmentManager() {
       const result = await response.json();
 
       if (!response.ok) {
-        setMessage({ type: "error", text: result.error ?? "No pude actualizar precios cripto. Se conservaron los precios actuales." });
+        setMessage({ type: "error", text: result.error ?? "No pude actualizar precios. Se conservaron los precios actuales." });
         return;
       }
 
       setMessage({
         type: result.failed > 0 ? "error" : result.updated > 0 ? "success" : "info",
-        text: result.message ?? "Actualizacion de precios cripto terminada.",
+        text: result.message ?? "Actualizacion de precios terminada.",
       });
       await loadData();
     } catch {
@@ -371,9 +375,41 @@ export function InvestmentManager() {
     }
   }
 
-  async function validateCoinGeckoIdBeforeSave(form: typeof emptyAssetForm) {
-    if (form.asset_type !== "crypto" || form.price_source !== "coingecko") return "";
+  async function validateAutomaticPriceBeforeSave(form: typeof emptyAssetForm) {
+    if (form.asset_type === "crypto" && form.price_source === "coingecko") {
+      return validatePriceProviderBeforeSave({
+        provider: "coingecko",
+        providerAssetId: form.coingecko_id,
+        fallbackError: "No encontre ese ID en CoinGecko. CoinGecko usa IDs como bitcoin, ethereum o solana, no simbolos como BTC.",
+        connectionError: "No pude validar el ID con CoinGecko. Revisa tu conexion o intenta mas tarde.",
+      });
+    }
 
+    if ((form.asset_type === "stock" || form.asset_type === "etf") && form.price_source === "alpha_vantage") {
+      return validatePriceProviderBeforeSave({
+        provider: "alpha_vantage",
+        providerSymbol: getAlphaVantageSymbol(form),
+        fallbackError: "No encontre ese simbolo en Alpha Vantage. Usa tickers como AAPL, MSFT, VOO o QQQ.",
+        connectionError: "No pude validar el simbolo con Alpha Vantage. Revisa tu conexion, tu API key o intenta mas tarde.",
+      });
+    }
+
+    return "";
+  }
+
+  async function validatePriceProviderBeforeSave({
+    provider,
+    providerAssetId,
+    providerSymbol,
+    fallbackError,
+    connectionError,
+  }: {
+    provider: InvestmentPriceSource;
+    providerAssetId?: string;
+    providerSymbol?: string;
+    fallbackError: string;
+    connectionError: string;
+  }) {
     try {
       const response = await fetch("/api/prices/validate", {
         method: "POST",
@@ -381,17 +417,18 @@ export function InvestmentManager() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          provider: "coingecko",
-          providerAssetId: form.coingecko_id,
+          provider,
+          providerAssetId,
+          providerSymbol,
         }),
       });
       const result = await response.json();
 
       if (!response.ok || !result.valid) {
-        return result.error ?? "No encontre ese ID en CoinGecko. CoinGecko usa IDs como bitcoin, ethereum o solana, no simbolos como BTC.";
+        return result.error ?? fallbackError;
       }
     } catch {
-      return "No pude validar el ID con CoinGecko. Revisa tu conexion o intenta mas tarde.";
+      return connectionError;
     }
 
     return "";
@@ -428,7 +465,7 @@ export function InvestmentManager() {
 
       <div className="flex flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 md:flex-row md:items-center md:justify-between">
         <p>
-          Los precios pueden ser manuales o venir de CoinGecko para cripto. No hay acciones, ETFs en tiempo real ni brokers automaticos todavia.
+          Los precios pueden ser manuales, venir de CoinGecko para cripto o de Alpha Vantage para acciones y ETFs.
         </p>
         <button
           className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300 md:w-auto"
@@ -436,7 +473,7 @@ export function InvestmentManager() {
           onClick={updateCryptoPrices}
           type="button"
         >
-          {isUpdatingCryptoPrices ? "Actualizando..." : "Actualizar precios cripto"}
+          {isUpdatingCryptoPrices ? "Actualizando..." : "Actualizar precios"}
         </button>
       </div>
 
@@ -532,8 +569,9 @@ export function InvestmentManager() {
       asset_type: asset.asset_type,
       currency: normalizeCurrency(asset.currency),
       current_price: String(asset.current_price),
-      price_source: asset.price_source ?? "manual",
+      price_source: getEditablePriceSource(asset),
       coingecko_id: asset.provider_asset_id ?? asset.coingecko_id ?? "",
+      provider_symbol: asset.provider_symbol ?? asset.symbol,
       description: asset.description ?? "",
       is_active: asset.is_active,
     });
@@ -613,11 +651,13 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
           value={form.asset_type}
           onChange={(value) => {
             const nextType = value as InvestmentAssetType;
+            const nextPriceSource = getDefaultPriceSourceForType(nextType, form.price_source);
             onChange({
               ...form,
               asset_type: nextType,
-              price_source: nextType === "crypto" ? form.price_source : "manual",
+              price_source: nextPriceSource,
               coingecko_id: nextType === "crypto" ? form.coingecko_id : "",
+              provider_symbol: nextType === "stock" || nextType === "etf" ? (form.provider_symbol || form.symbol.toUpperCase()) : "",
             });
           }}
         >
@@ -625,15 +665,21 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
         </SelectInput>
         <CurrencySelect value={form.currency} onChange={(value) => onChange({ ...form, currency: value })} />
         <TextInput label="Precio actual manual" min="0" step="0.00000001" type="number" value={form.current_price} onChange={(value) => onChange({ ...form, current_price: value })} />
-        {form.asset_type === "crypto" ? (
+        {form.asset_type === "crypto" || form.asset_type === "stock" || form.asset_type === "etf" ? (
           <>
             <SelectInput label="Fuente de precio" value={form.price_source} onChange={(value) => onChange({ ...form, price_source: value as InvestmentPriceSource })}>
-              {(["manual", "coingecko"] as InvestmentPriceSource[]).map((value) => <option key={value} value={value}>{priceSourceLabels[value]}</option>)}
+              {getPriceSourceOptionsForType(form.asset_type).map((value) => <option key={value} value={value}>{priceSourceLabels[value]}</option>)}
             </SelectInput>
-            <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-              Preparado para CoinMarketCap, Alpha Vantage y Twelve Data, pero en esta fase solo CoinGecko esta activo para cripto.
-            </p>
-            {form.price_source === "coingecko" ? (
+            {form.asset_type === "crypto" ? (
+              <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                Para cripto, CoinGecko usa IDs. CoinMarketCap queda preparado para despues, pero aun no esta conectado.
+              </p>
+            ) : (
+              <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                Para acciones y ETFs, Alpha Vantage usa simbolos o tickers como AAPL, MSFT, VOO o QQQ.
+              </p>
+            )}
+            {form.asset_type === "crypto" && form.price_source === "coingecko" ? (
               <div className="space-y-2">
                 <TextInput label="CoinGecko ID" placeholder="bitcoin, ethereum, solana..." value={form.coingecko_id} onChange={(value) => onChange({ ...form, coingecko_id: value })} />
                 <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
@@ -643,6 +689,15 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
                       <p key={symbol}>{symbol} = {id}</p>
                     ))}
                   </div>
+                </div>
+              </div>
+            ) : null}
+            {(form.asset_type === "stock" || form.asset_type === "etf") && form.price_source === "alpha_vantage" ? (
+              <div className="space-y-2">
+                <TextInput label="Simbolo Alpha Vantage" placeholder="AAPL, MSFT, VOO, QQQ..." value={form.provider_symbol} onChange={(value) => onChange({ ...form, provider_symbol: value })} />
+                <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+                  <p className="font-medium text-slate-700">Alpha Vantage usa tickers, no CoinGecko IDs.</p>
+                  <p className="mt-1">Ejemplos comunes: {commonAlphaVantageSymbols.join(", ")}.</p>
                 </div>
               </div>
             ) : null}
@@ -873,7 +928,38 @@ function validateAsset(form: typeof emptyAssetForm) {
   if (form.asset_type === "crypto" && form.price_source === "coingecko" && !form.coingecko_id.trim()) {
     return "Escribe el CoinGecko ID. Ejemplos: bitcoin, ethereum, solana.";
   }
+  if ((form.asset_type === "stock" || form.asset_type === "etf") && form.price_source === "alpha_vantage" && !getAlphaVantageSymbol(form)) {
+    return "Escribe el simbolo para Alpha Vantage. Ejemplos: AAPL, MSFT, VOO o QQQ.";
+  }
   return "";
+}
+
+function getAssetPriceProvider(form: typeof emptyAssetForm): InvestmentPriceSource {
+  if (form.asset_type === "crypto" && form.price_source === "coingecko") return "coingecko";
+  if ((form.asset_type === "stock" || form.asset_type === "etf") && form.price_source === "alpha_vantage") return "alpha_vantage";
+  return "manual";
+}
+
+function getAlphaVantageSymbol(form: typeof emptyAssetForm) {
+  return (form.provider_symbol.trim() || form.symbol.trim()).toUpperCase();
+}
+
+function getEditablePriceSource(asset: InvestmentAsset): InvestmentPriceSource {
+  if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "coingecko";
+  if ((asset.asset_type === "stock" || asset.asset_type === "etf") && asset.price_provider === "alpha_vantage") return "alpha_vantage";
+  return "manual";
+}
+
+function getDefaultPriceSourceForType(assetType: InvestmentAssetType, currentSource: InvestmentPriceSource): InvestmentPriceSource {
+  if (assetType === "crypto") return currentSource === "coingecko" ? "coingecko" : "manual";
+  if (assetType === "stock" || assetType === "etf") return currentSource === "alpha_vantage" ? "alpha_vantage" : "manual";
+  return "manual";
+}
+
+function getPriceSourceOptionsForType(assetType: InvestmentAssetType): InvestmentPriceSource[] {
+  if (assetType === "crypto") return ["manual", "coingecko"];
+  if (assetType === "stock" || assetType === "etf") return ["manual", "alpha_vantage"];
+  return ["manual"];
 }
 
 function validateHolding(form: typeof emptyHoldingForm) {
@@ -934,6 +1020,7 @@ function formatDateTime(dateValue: string) {
 function getPriceSourceLabel(asset: InvestmentAsset | undefined) {
   if (!asset) return "Sin dato";
   if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "CoinGecko";
+  if ((asset.asset_type === "stock" || asset.asset_type === "etf") && asset.price_provider === "alpha_vantage") return "Alpha Vantage";
   return "Manual";
 }
 
