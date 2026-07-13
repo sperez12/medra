@@ -383,8 +383,24 @@ export function DashboardSummary() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Cuentas</h2>
+          <p className="text-sm text-slate-600">Saldos estimados por cuenta, separados por moneda.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Total en cuentas" value={<MoneyTotals totals={accountTotalsByCurrency} />} strong />
+          <SummaryCard label="Cuentas activas" value={String(activeAccountSummaries.length)} />
+        </div>
+        <div className="mt-4">
+          <TopAccountsList accounts={topAccounts} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Inversiones</h2>
-          <p className="text-sm text-slate-600">Valores estimados con el precio actual registrado en cada activo.</p>
+          <p className="text-sm text-slate-600">
+            Valores estimados con el precio actual registrado en cada activo. Los precios pueden ser manuales o venir de CoinGecko para cripto.
+          </p>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Valor total" value={<MoneyTotals totals={investmentsByCurrency} />} />
@@ -392,24 +408,14 @@ export function DashboardSummary() {
           <SummaryCard label="Activos" value={String(investmentAssets.length)} />
           <SummaryCard label="Holdings" value={String(holdings.length)} />
         </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <TopInvestmentsList title="Principales plataformas" rows={topInvestmentPlatforms} />
-          <TopInvestmentsList title="Principales activos" rows={topInvestmentAssets} />
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
-          <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
-          <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
-          <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
-          <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
-        </div>
-        <UpcomingGoals goals={upcomingGoals} />
+        {investmentSummaries.length > 0 ? (
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <TopInvestmentsList title="Principales plataformas" rows={topInvestmentPlatforms} />
+            <TopInvestmentsList title="Principales activos" rows={topInvestmentAssets} />
+          </div>
+        ) : (
+          <EmptyTableMessage text="Aun no hay holdings de inversion para resumir. Cuando registres uno, aqui veras tus principales plataformas y activos." />
+        )}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -428,32 +434,48 @@ export function DashboardSummary() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-slate-950">Cuentas</h2>
-          <p className="text-sm text-slate-600">Resumen de saldos, movimientos y transferencias recientes.</p>
+          <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
+          <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Total en cuentas" value={<MoneyTotals totals={accountTotalsByCurrency} />} strong />
-          <SummaryCard label="Cuentas activas" value={String(activeAccountSummaries.length)} />
+          <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
+          <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
+          <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
+          <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
         </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-3">
-          <TopAccountsList accounts={topAccounts} />
+        {activeGoalSummaries.length > 0 ? (
+          <UpcomingGoals goals={upcomingGoals} />
+        ) : (
+          <EmptyTableMessage text="Aun no hay metas activas. Cuando crees una meta, aqui veras su avance y fechas importantes." />
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Actividad reciente</h2>
+          <p className="text-sm text-slate-600">
+            Ultimos movimientos visibles segun tus datos actuales. Gastos y pagos respetan el filtro de periodo seleccionado.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <UpcomingCards title="Tarjetas proximas a corte" items={cardsNearCut} type="cut" />
+          <UpcomingCards title="Tarjetas proximas a pago" items={cardsNearPayment} type="payment" />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <RecentExpensesTable
+            categories={categories}
+            cards={cards}
+            expenses={recentExpenses}
+          />
+          <RecentPaymentsTable cards={cards} payments={recentPayments} />
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
           <RecentAccountMovementsTable accounts={accounts} movements={recentAccountMovements} />
           <RecentTransfersTable accounts={accounts} transfers={recentAccountTransfers} />
         </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <UpcomingCards title="Tarjetas proximas a corte" items={cardsNearCut} type="cut" />
-        <UpcomingCards title="Tarjetas proximas a pago" items={cardsNearPayment} type="payment" />
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-2">
-        <RecentExpensesTable
-          categories={categories}
-          cards={cards}
-          expenses={recentExpenses}
-        />
-        <RecentPaymentsTable cards={cards} payments={recentPayments} />
       </section>
     </div>
   );
@@ -759,7 +781,30 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
   return (
     <div className="rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Tarjetas principales</h3>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 space-y-3 md:hidden">
+        {summaries.map((summary) => (
+          <article className="rounded-md bg-slate-50 p-3" key={summary.card.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium text-slate-950">{summary.card.name}</p>
+                <p className="text-xs text-slate-500">
+                  {summary.card.bank} - **** {summary.card.last_four_digits} - {summary.card.currency}
+                </p>
+              </div>
+              <p className="text-right text-sm font-semibold text-slate-950">{summary.usagePercent.toFixed(1)}%</p>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <MiniMetric label="Gastado" value={formatCurrency(summary.spent, summary.card.currency)} />
+              <MiniMetric label="Pagado" value={formatCurrency(summary.paid, summary.card.currency)} />
+              <MiniMetric label="Pendiente" value={formatCurrency(summary.pending, summary.card.currency)} />
+              <MiniMetric label="Disponible" value={formatCurrency(summary.available, summary.card.currency)} />
+              <MiniMetric label="Corte" value={`${summary.daysToCut} dia(s)`} />
+              <MiniMetric label="Pago" value={`${summary.daysToPayment} dia(s)`} />
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="mt-3 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -797,6 +842,15 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
         </table>
       </div>
       {summaries.length === 0 ? <EmptyTableMessage text="Aun no hay tarjetas activas para mostrar." /> : null}
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="font-medium text-slate-900">{value}</p>
     </div>
   );
 }
@@ -1069,7 +1123,7 @@ function RecentExpensesTable({
             {expenses.map((expense) => (
               <tr className="border-b border-slate-100" key={expense.id}>
                 <td className="py-3 pr-4 text-slate-700">
-                  {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")}
+                  {formatDate(expense.expense_date)}
                 </td>
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
@@ -1106,7 +1160,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
             {payments.map((payment) => (
               <tr className="border-b border-slate-100" key={payment.id}>
                 <td className="py-3 pr-4 text-slate-700">
-                  {new Date(`${payment.payment_date}T00:00:00`).toLocaleDateString("es-MX")}
+                  {formatDate(payment.payment_date)}
                 </td>
                 <td className="py-3 pr-4 text-slate-700">{getCardInfo(cards, payment.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
