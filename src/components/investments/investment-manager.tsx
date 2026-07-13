@@ -134,6 +134,7 @@ export function InvestmentManager() {
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingCryptoPrices, setIsUpdatingCryptoPrices] = useState(false);
+  const [isSavingAsset, setIsSavingAsset] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -227,6 +228,14 @@ export function InvestmentManager() {
     const validation = validateAsset(assetForm);
     if (validation) return setMessage({ type: "error", text: validation });
 
+    setIsSavingAsset(true);
+    const coingeckoValidationError = await validateCoinGeckoIdBeforeSave(assetForm);
+    if (coingeckoValidationError) {
+      setIsSavingAsset(false);
+      setMessage({ type: "error", text: coingeckoValidationError });
+      return;
+    }
+
     const payload = {
       user_id: userId,
       symbol: assetForm.symbol.trim().toUpperCase(),
@@ -246,11 +255,15 @@ export function InvestmentManager() {
       ? supabase.from("assets").update(payload).eq("id", editingAssetId).eq("user_id", userId)
       : supabase.from("assets").insert(payload);
     const { error } = await request;
-    if (error) return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+    if (error) {
+      setIsSavingAsset(false);
+      return setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+    }
 
     setAssetForm(emptyAssetForm);
     setEditingAssetId(null);
     setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el precio configurado." : "Activo creado. Ahora puedes registrarlo en un holding." });
+    setIsSavingAsset(false);
     await loadData();
   }
 
@@ -358,6 +371,32 @@ export function InvestmentManager() {
     }
   }
 
+  async function validateCoinGeckoIdBeforeSave(form: typeof emptyAssetForm) {
+    if (form.asset_type !== "crypto" || form.price_source !== "coingecko") return "";
+
+    try {
+      const response = await fetch("/api/prices/validate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          provider: "coingecko",
+          providerAssetId: form.coingecko_id,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.valid) {
+        return result.error ?? "No encontre ese ID en CoinGecko. CoinGecko usa IDs como bitcoin, ethereum o solana, no simbolos como BTC.";
+      }
+    } catch {
+      return "No pude validar el ID con CoinGecko. Revisa tu conexion o intenta mas tarde.";
+    }
+
+    return "";
+  }
+
   async function deleteRow(table: "platforms" | "assets" | "holdings" | "investment_transactions", id: string, label: string, successMessage: string) {
     if (!supabase) return;
     const confirmed = window.confirm(`Vas a borrar ${label}.\n\nSeguro que quieres continuar?`);
@@ -405,7 +444,7 @@ export function InvestmentManager() {
 
       <section className="grid gap-6 xl:grid-cols-2">
         <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={() => { setEditingPlatformId(null); setPlatformForm(emptyPlatformForm); }} />
-        <AssetForm form={assetForm} editingId={editingAssetId} onSubmit={saveAsset} onChange={setAssetForm} onCancel={() => { setEditingAssetId(null); setAssetForm(emptyAssetForm); }} />
+        <AssetForm form={assetForm} editingId={editingAssetId} isSaving={isSavingAsset} onSubmit={saveAsset} onChange={setAssetForm} onCancel={() => { setEditingAssetId(null); setAssetForm(emptyAssetForm); }} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
@@ -555,9 +594,10 @@ function PlatformForm({ form, editingId, onSubmit, onChange, onCancel }: {
   );
 }
 
-function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
+function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: {
   form: typeof emptyAssetForm;
   editingId: string | null;
+  isSaving: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onChange: (form: typeof emptyAssetForm) => void;
   onCancel: () => void;
@@ -611,7 +651,7 @@ function AssetForm({ form, editingId, onSubmit, onChange, onCancel }: {
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
         <Checkbox label="Activo" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar activo" : "Crear activo"} onCancel={onCancel} />
+      <FormButtons disabled={isSaving} editing={Boolean(editingId)} submitLabel={isSaving ? "Validando..." : editingId ? "Guardar activo" : "Crear activo"} onCancel={onCancel} />
     </form>
   );
 }
@@ -961,11 +1001,11 @@ function Checkbox({ label, checked, onChange }: { label: string; checked: boolea
   );
 }
 
-function FormButtons({ editing, submitLabel, onCancel }: { editing: boolean; submitLabel: string; onCancel: () => void }) {
+function FormButtons({ disabled = false, editing, submitLabel, onCancel }: { disabled?: boolean; editing: boolean; submitLabel: string; onCancel: () => void }) {
   return (
     <>
-      <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">{submitLabel}</button>
-      {editing ? <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" onClick={onCancel} type="button">Cancelar edicion</button> : null}
+      <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300" disabled={disabled} type="submit">{submitLabel}</button>
+      {editing ? <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" disabled={disabled} onClick={onCancel} type="button">Cancelar edicion</button> : null}
     </>
   );
 }
