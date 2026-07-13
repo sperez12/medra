@@ -75,11 +75,11 @@ async function validateCoinGeckoId(value: string | undefined) {
 }
 
 async function validateAlphaVantageSymbol(value: string | undefined) {
-  const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const apiKey = process.env.ALPHA_VANTAGE_API_KEY?.trim();
   if (!apiKey) {
     return NextResponse.json({
       valid: false,
-      error: "Falta configurar ALPHA_VANTAGE_API_KEY en .env.local antes de usar Alpha Vantage.",
+      error: "Falta configurar ALPHA_VANTAGE_API_KEY en .env.local. Agrega la clave, reinicia la app y vuelve a intentar.",
     }, { status: 500 });
   }
 
@@ -87,7 +87,7 @@ async function validateAlphaVantageSymbol(value: string | undefined) {
   if (!symbol) {
     return NextResponse.json({
       valid: false,
-      error: "Escribe el ticker para Alpha Vantage. Ejemplos: AAPL, MSFT, VOO o QQQ.",
+      error: "Escribe el ticker/simbolo para Alpha Vantage. Ejemplos: AAPL, MSFT, VOO o QQQ.",
     }, { status: 400 });
   }
 
@@ -109,7 +109,7 @@ async function validateAlphaVantageSymbol(value: string | undefined) {
     if (!response.ok) {
       return NextResponse.json({
         valid: false,
-        error: "No pude validar el simbolo con Alpha Vantage. Revisa tu conexion o intenta mas tarde.",
+        error: "Alpha Vantage no respondio correctamente. Revisa tu conexion o intenta mas tarde.",
       }, { status: 502 });
     }
 
@@ -123,7 +123,7 @@ async function validateAlphaVantageSymbol(value: string | undefined) {
     if (!Number.isFinite(price) || price <= 0) {
       return NextResponse.json({
         valid: false,
-        error: "No encontre ese simbolo en Alpha Vantage. Usa tickers como AAPL, MSFT, VOO o QQQ.",
+        error: `No encontre "${symbol}" en Alpha Vantage. Usa tickers validos como AAPL, MSFT, VOO o QQQ.`,
       }, { status: 404 });
     }
 
@@ -131,23 +131,26 @@ async function validateAlphaVantageSymbol(value: string | undefined) {
   } catch {
     return NextResponse.json({
       valid: false,
-      error: "No pude validar el simbolo con Alpha Vantage. Revisa tu conexion o intenta mas tarde.",
+      error: "No pude conectar con Alpha Vantage. Revisa tu conexion o intenta mas tarde.",
     }, { status: 502 });
   }
 }
 
 function getAlphaVantageValidationError(data: Record<string, unknown>) {
   const errorMessage = data["Error Message"];
-  if (typeof errorMessage === "string") return "No encontre ese simbolo en Alpha Vantage. Usa tickers como AAPL, MSFT, VOO o QQQ.";
+  if (typeof errorMessage === "string") return "No encontre ese simbolo en Alpha Vantage. Usa tickers validos como AAPL, MSFT, VOO o QQQ.";
 
   const note = data.Note;
-  if (typeof note === "string") return "Alpha Vantage alcanzo su limite de consultas. Intenta de nuevo mas tarde.";
+  if (typeof note === "string") return "Alpha Vantage alcanzo su limite de consultas. Espera un poco antes de volver a intentar.";
 
   const information = data.Information;
   if (typeof information === "string") {
-    if (information.toLowerCase().includes("api key")) return "La API key de Alpha Vantage no es valida o falta configurarla.";
-    if (information.toLowerCase().includes("rate limit")) return "Alpha Vantage alcanzo su limite de consultas. Intenta de nuevo mas tarde.";
-    return "Alpha Vantage no pudo validar el simbolo. Revisa la API key o intenta mas tarde.";
+    const normalized = information.toLowerCase();
+    if (normalized.includes("api key")) return "La API key de Alpha Vantage no es valida o falta configurarla. Revisa .env.local y reinicia la app.";
+    if (normalized.includes("rate limit") || normalized.includes("frequency") || normalized.includes("standard api call frequency")) {
+      return "Alpha Vantage alcanzo su limite de consultas. Espera un poco antes de volver a intentar.";
+    }
+    return "Alpha Vantage no pudo validar el simbolo. Revisa la API key, el ticker o intenta mas tarde.";
   }
 
   return "";

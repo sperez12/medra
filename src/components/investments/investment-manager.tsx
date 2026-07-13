@@ -389,7 +389,7 @@ export function InvestmentManager() {
       return validatePriceProviderBeforeSave({
         provider: "alpha_vantage",
         providerSymbol: getAlphaVantageSymbol(form),
-        fallbackError: "No encontre ese simbolo en Alpha Vantage. Usa tickers como AAPL, MSFT, VOO o QQQ.",
+        fallbackError: "No encontre ese simbolo en Alpha Vantage. Usa tickers validos como AAPL, MSFT, VOO o QQQ.",
         connectionError: "No pude validar el simbolo con Alpha Vantage. Revisa tu conexion, tu API key o intenta mas tarde.",
       });
     }
@@ -676,7 +676,7 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
               </p>
             ) : (
               <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                Para acciones y ETFs, Alpha Vantage usa simbolos o tickers como AAPL, MSFT, VOO o QQQ.
+                Para acciones y ETFs, Alpha Vantage usa ticker/simbolo como AAPL, MSFT, VOO o QQQ. No usa CoinGecko ID.
               </p>
             )}
             {form.asset_type === "crypto" && form.price_source === "coingecko" ? (
@@ -696,8 +696,9 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
               <div className="space-y-2">
                 <TextInput label="Simbolo Alpha Vantage" placeholder="AAPL, MSFT, VOO, QQQ..." value={form.provider_symbol} onChange={(value) => onChange({ ...form, provider_symbol: value })} />
                 <div className="rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-                  <p className="font-medium text-slate-700">Alpha Vantage usa tickers, no CoinGecko IDs.</p>
+                  <p className="font-medium text-slate-700">Alpha Vantage usa tickers/simbolos, no CoinGecko IDs.</p>
                   <p className="mt-1">Ejemplos comunes: {commonAlphaVantageSymbols.join(", ")}.</p>
+                  <p className="mt-1">Si Alpha Vantage marca limite de consultas, espera un poco y vuelve a intentar.</p>
                 </div>
               </div>
             ) : null}
@@ -801,7 +802,7 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
               <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
               <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
-              <td className="py-3 pr-4">{asset?.last_price_error ? <span className="text-red-700">{asset.last_price_error}</span> : "Sin error"}</td>
+              <td className="py-3 pr-4"><PriceErrorText error={asset?.last_price_error} /></td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
               <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
@@ -828,7 +829,7 @@ function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; 
               <td className="py-3 pr-4">{formatCurrency(Number(asset.current_price), asset.currency)}</td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
               <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
-              <td className="py-3 pr-4">{asset.last_price_error ? <span className="text-red-700">{asset.last_price_error}</span> : "Sin error"}</td>
+              <td className="py-3 pr-4"><PriceErrorText error={asset.last_price_error} /></td>
               <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(asset)} onDelete={() => onDelete(asset)} /></td>
             </tr>
@@ -1022,6 +1023,16 @@ function getPriceSourceLabel(asset: InvestmentAsset | undefined) {
   if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "CoinGecko";
   if ((asset.asset_type === "stock" || asset.asset_type === "etf") && asset.price_provider === "alpha_vantage") return "Alpha Vantage";
   return "Manual";
+}
+
+function PriceErrorText({ error }: { error: string | null | undefined }) {
+  if (!error) return <span className="text-slate-500">Sin error</span>;
+
+  return (
+    <span className="inline-flex max-w-[320px] rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+      {error}
+    </span>
+  );
 }
 
 function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentPlatform[]; value: string; onChange: (value: string) => void }) {

@@ -80,7 +80,7 @@ export async function POST(request: Request) {
         ...missingProviderIdAssets.map((asset) => `${asset.symbol}: falta CoinGecko ID`),
         ...missingProviderSymbolAssets.map((asset) => `${asset.symbol}: falta simbolo Alpha Vantage`),
       ],
-      message: `Hay activos automaticos incompletos: ${names}. Revisa CoinGecko ID para cripto o ticker para Alpha Vantage.`,
+      message: `Hay activos automaticos incompletos: ${names}. Revisa CoinGecko ID para cripto o ticker/simbolo para Alpha Vantage.`,
     });
   }
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
   for (const asset of missingProviderSymbolAssets) {
     await supabase
       .from("assets")
-      .update({ last_price_error: "Falta simbolo para Alpha Vantage. Ejemplos: AAPL, MSFT, VOO." })
+      .update({ last_price_error: "Falta simbolo/ticker para Alpha Vantage. Ejemplos: AAPL, MSFT, VOO o QQQ." })
       .eq("id", asset.id)
       .eq("user_id", userData.user.id);
   }
@@ -141,11 +141,20 @@ export async function POST(request: Request) {
     updated,
     failed: failures.length,
     failures,
-    message:
-      failures.length > 0
-        ? `Actualizacion parcial: se actualizaron ${updated} activo(s), pero algunos requieren revision: ${failures.join(" | ")}. El precio anterior se conservo.`
-        : `Se actualizaron ${updated} precio(s) correctamente.`,
+    message: buildUpdateMessage(updated, failures),
   });
+}
+
+function buildUpdateMessage(updated: number, failures: string[]) {
+  if (failures.length === 0) return `Se actualizaron ${updated} precio(s) correctamente.`;
+
+  const preview = failures.slice(0, 3).join(" | ");
+  const extra = failures.length > 3 ? ` y ${failures.length - 3} error(es) mas` : "";
+  if (updated === 0) {
+    return `No se actualizo ningun precio. Revisa los errores recientes en tus activos: ${preview}${extra}. Se conservaron los precios anteriores.`;
+  }
+
+  return `Actualizacion parcial: se actualizaron ${updated} activo(s), pero ${failures.length} requieren revision: ${preview}${extra}. Se conservaron los precios anteriores donde hubo error.`;
 }
 
 function isSupportedAutomaticAsset(asset: AssetRow) {
