@@ -68,6 +68,7 @@ export function BasicReports() {
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export function BasicReports() {
   async function loadData() {
     if (!supabase) {
       setMessage({ type: "error", text: "Falta configurar Supabase para ver reportes." });
+      setHasLoadedReports(false);
       setIsLoading(false);
       return;
     }
@@ -84,6 +86,7 @@ export function BasicReports() {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
       setMessage({ type: "info", text: "Inicia sesion para ver tus reportes." });
+      setHasLoadedReports(false);
       setIsLoading(false);
       return;
     }
@@ -131,6 +134,7 @@ export function BasicReports() {
           (snapshotError ? getFriendlySnapshotError(snapshotError.message) : null) ??
           "No se pudieron cargar los reportes.",
       });
+      setHasLoadedReports(false);
       setIsLoading(false);
       return;
     }
@@ -144,6 +148,7 @@ export function BasicReports() {
     setAssets((assetData ?? []) as InvestmentAsset[]);
     setHoldings((holdingData ?? []) as Holding[]);
     setSnapshots((snapshotData ?? []) as NetWorthSnapshot[]);
+    setHasLoadedReports(true);
     setIsLoading(false);
   }
 
@@ -251,11 +256,11 @@ export function BasicReports() {
     await loadData();
   }
 
-  if (isLoading) {
+  if (isLoading && !hasLoadedReports) {
     return <StatusPanel text="Cargando reportes..." />;
   }
 
-  if (message) {
+  if (message && !hasLoadedReports) {
     return <StatusPanel text={message.text} tone={message.type} />;
   }
 
@@ -269,6 +274,8 @@ export function BasicReports() {
       </section>
 
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
+
+      {message ? <InlineMessage message={message} /> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
@@ -833,6 +840,17 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
 
 function EmptyMessage({ text }: { text: string }) {
   return <p className="mt-4 rounded-md bg-slate-50 p-4 text-sm text-slate-600">{text}</p>;
+}
+
+function InlineMessage({ message }: { message: Message }) {
+  const styles =
+    message.type === "error"
+      ? "border-red-200 bg-red-50 text-red-800"
+      : message.type === "success"
+        ? "border-green-200 bg-green-50 text-green-800"
+        : "border-blue-200 bg-blue-50 text-blue-800";
+
+  return <div className={`rounded-md border px-4 py-3 text-sm ${styles}`}>{message.text}</div>;
 }
 
 function formatDate(dateValue: string) {
