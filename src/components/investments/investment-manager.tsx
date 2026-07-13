@@ -229,7 +229,7 @@ export function InvestmentManager() {
     if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
     const userId = await getUserId();
     if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar activos." });
-    const validation = validateAsset(assetForm);
+    const validation = validateAsset(assetForm, assets, editingAssetId);
     if (validation) return setMessage({ type: "error", text: validation });
 
     setIsSavingAsset(true);
@@ -278,7 +278,7 @@ export function InvestmentManager() {
     if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
     const userId = await getUserId();
     if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar holdings." });
-    const validation = validateHolding(holdingForm);
+    const validation = validateHolding(holdingForm, holdings, editingHoldingId);
     if (validation) return setMessage({ type: "error", text: validation });
 
     const payload = {
@@ -478,6 +478,7 @@ export function InvestmentManager() {
   const valueByPlatform = buildValueByPlatform(holdingSummaries).slice(0, 6);
   const valueByAssetType = buildValueByAssetType(holdingSummaries);
   const recentTransactions = transactions.slice(0, 8);
+  const duplicateAssetGroups = findDuplicateAssetGroups(assets);
 
   if (isLoading) return <StatusPanel text="Cargando inversiones..." />;
 
@@ -526,6 +527,10 @@ export function InvestmentManager() {
           </button>
         </div>
       </div>
+
+      {duplicateAssetGroups.length > 0 ? (
+        <DuplicateAssetsNotice groups={duplicateAssetGroups} />
+      ) : null}
 
       {message ? <StatusMessage message={message} /> : null}
 
@@ -702,6 +707,9 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar activo" : "Nuevo activo"}</h2>
+      <p className="mt-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+        Crea cada activo una sola vez por simbolo, tipo y moneda. Si tienes el mismo activo en otra plataforma, crea un holding nuevo usando el activo existente.
+      </p>
       <div className="mt-4 grid gap-4">
         <TextInput label="Simbolo" placeholder="VOO, AAPL, BTC..." value={form.symbol} onChange={(value) => onChange({ ...form, symbol: value })} />
         <TextInput label="Nombre" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
@@ -771,6 +779,37 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
   );
 }
 
+function DuplicateAssetsNotice({
+  groups,
+}: {
+  groups: Array<{
+    key: string;
+    symbol: string;
+    assetType: InvestmentAssetType;
+    currency: string;
+    count: number;
+  }>;
+}) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <p className="font-semibold">Hay activos duplicados que conviene revisar.</p>
+      <p className="mt-1">
+        Un activo debe existir una sola vez por simbolo, tipo y moneda. Para tenerlo en varias plataformas, usa holdings separados.
+      </p>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {groups.map((group) => (
+          <p className="rounded-md bg-white/70 px-3 py-2" key={group.key}>
+            {group.symbol} - {assetTypeLabels[group.assetType]} - {group.currency}: {group.count} activos
+          </p>
+        ))}
+      </div>
+      <p className="mt-3 text-xs">
+        Usa el SQL docs/FIX_DUPLICATED_ASSETS.sql para intentar limpiar duplicados de forma conservadora antes de crear la restriccion unica.
+      </p>
+    </div>
+  );
+}
+
 function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, onCancel }: {
   assets: InvestmentAsset[];
   platforms: InvestmentPlatform[];
@@ -783,6 +822,9 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar holding" : "Nuevo holding"}</h2>
+      <p className="mt-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+        Puedes tener el mismo activo en varias plataformas. Dentro de una misma plataforma, usa un solo holding por activo.
+      </p>
       <div className="mt-4 grid gap-4">
         <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
         <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
@@ -1006,12 +1048,15 @@ function validatePlatform(form: typeof emptyPlatformForm) {
   return "";
 }
 
-function validateAsset(form: typeof emptyAssetForm) {
+function validateAsset(form: typeof emptyAssetForm, assets: InvestmentAsset[], editingAssetId: string | null) {
   if (!form.symbol.trim()) return "Escribe el simbolo del activo.";
   if (!form.name.trim()) return "Escribe el nombre del activo.";
   if (!form.asset_type) return "Selecciona el tipo de activo.";
   if (!form.currency) return "Selecciona la moneda del activo.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
+  if (findDuplicateAssetForForm(form, assets, editingAssetId)) {
+    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea un holding nuevo para otra plataforma.";
+  }
   if (!Number.isFinite(Number(form.current_price)) || Number(form.current_price) < 0) return "El precio actual manual no puede ser negativo.";
   if (form.asset_type === "crypto" && form.price_source === "coingecko" && !form.coingecko_id.trim()) {
     return "Escribe el CoinGecko ID. Ejemplos: bitcoin, ethereum, solana.";
@@ -1050,12 +1095,70 @@ function getPriceSourceOptionsForType(assetType: InvestmentAssetType): Investmen
   return ["manual"];
 }
 
-function validateHolding(form: typeof emptyHoldingForm) {
+function validateHolding(form: typeof emptyHoldingForm, holdings: Holding[], editingHoldingId: string | null) {
   if (!form.platform_id) return "Selecciona una plataforma.";
   if (!form.asset_id) return "Selecciona un activo.";
+  if (findDuplicateHoldingForForm(form, holdings, editingHoldingId)) {
+    return "Ya existe un holding para esta plataforma y activo. Edita ese holding en lugar de crear otro duplicado.";
+  }
   if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
   if (form.average_cost !== "" && (!Number.isFinite(Number(form.average_cost)) || Number(form.average_cost) < 0)) return "El precio promedio no puede ser negativo.";
   return "";
+}
+
+function findDuplicateAssetForForm(form: typeof emptyAssetForm, assets: InvestmentAsset[], editingAssetId: string | null) {
+  const key = buildAssetUniqueKey({
+    symbol: form.symbol,
+    asset_type: form.asset_type,
+    currency: form.currency,
+  });
+
+  return assets.find((asset) => asset.id !== editingAssetId && buildAssetUniqueKey(asset) === key);
+}
+
+function findDuplicateHoldingForForm(form: typeof emptyHoldingForm, holdings: Holding[], editingHoldingId: string | null) {
+  return holdings.find(
+    (holding) =>
+      holding.id !== editingHoldingId &&
+      holding.platform_id === form.platform_id &&
+      holding.asset_id === form.asset_id
+  );
+}
+
+function findDuplicateAssetGroups(assets: InvestmentAsset[]) {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      symbol: string;
+      assetType: InvestmentAssetType;
+      currency: string;
+      count: number;
+    }
+  >();
+
+  assets.forEach((asset) => {
+    const key = buildAssetUniqueKey(asset);
+    const current = groups.get(key) ?? {
+      key,
+      symbol: normalizeAssetSymbol(asset.symbol),
+      assetType: asset.asset_type,
+      currency: normalizeCurrency(asset.currency),
+      count: 0,
+    };
+    current.count += 1;
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.values()).filter((group) => group.count > 1);
+}
+
+function buildAssetUniqueKey(asset: Pick<InvestmentAsset, "symbol" | "asset_type" | "currency"> | { symbol: string; asset_type: InvestmentAssetType; currency: string }) {
+  return `${normalizeAssetSymbol(asset.symbol)}|${asset.asset_type}|${normalizeCurrency(asset.currency)}`;
+}
+
+function normalizeAssetSymbol(symbol: string) {
+  return symbol.trim().toUpperCase();
 }
 
 function validateTransaction(form: typeof emptyTransactionForm) {
@@ -1084,6 +1187,12 @@ function calculateTransactionTotal(quantity: string, price: string) {
 }
 
 function getFriendlyInvestmentError(error: string) {
+  if (error.includes("assets_user_symbol_type_currency_unique_idx")) {
+    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea un holding nuevo para otra plataforma.";
+  }
+  if (error.includes("holdings_user_id_platform_id_asset_id_key")) {
+    return "Ya existe un holding para esta plataforma y activo. Edita ese holding en lugar de crear otro duplicado.";
+  }
   if (error.includes("price_source") || error.includes("coingecko_id") || error.includes("last_price_updated_at")) {
     return "Falta actualizar Supabase para precios cripto. Ejecuta el SQL docs/ADD_CRYPTO_PRICE_SUPPORT.sql.";
   }
