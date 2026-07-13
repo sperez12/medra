@@ -136,7 +136,8 @@ export function InvestmentManager() {
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUpdatingCryptoPrices, setIsUpdatingCryptoPrices] = useState(false);
+  const [updatingPriceGroup, setUpdatingPriceGroup] = useState<"crypto" | "stock_etf" | null>(null);
+  const [updatingAssetId, setUpdatingAssetId] = useState<string | null>(null);
   const [isSavingAsset, setIsSavingAsset] = useState(false);
 
   useEffect(() => {
@@ -333,7 +334,19 @@ export function InvestmentManager() {
     await loadData();
   }
 
-  async function updateCryptoPrices() {
+  async function updatePrices({
+    assetType,
+    provider,
+    assetId,
+    successMessage,
+    emptyMessage,
+  }: {
+    assetType?: InvestmentAssetType;
+    provider?: InvestmentPriceSource;
+    assetId?: string;
+    successMessage: string;
+    emptyMessage: string;
+  }) {
     setMessage(null);
 
     if (!supabase) {
@@ -348,13 +361,26 @@ export function InvestmentManager() {
       return;
     }
 
-    setIsUpdatingCryptoPrices(true);
+    if (assetId) {
+      setUpdatingAssetId(assetId);
+    } else if (assetType === "crypto") {
+      setUpdatingPriceGroup("crypto");
+    } else {
+      setUpdatingPriceGroup("stock_etf");
+    }
+
     try {
       const response = await fetch("/api/prices/update", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
+        body: JSON.stringify({
+          asset_type: assetType,
+          provider,
+          asset_id: assetId,
+        }),
       });
       const result = await response.json();
 
@@ -365,13 +391,14 @@ export function InvestmentManager() {
 
       setMessage({
         type: result.failed > 0 ? "error" : result.updated > 0 ? "success" : "info",
-        text: result.message ?? "Actualizacion de precios terminada.",
+        text: result.updated > 0 && result.failed === 0 ? successMessage : result.message ?? emptyMessage,
       });
       await loadData();
     } catch {
-      setMessage({ type: "error", text: "No pude conectar con el actualizador de precios. Se conservaron los precios actuales." });
+      setMessage({ type: "error", text: assetId ? "No se pudo actualizar este activo. Se conservo el precio anterior." : "No pude conectar con el actualizador de precios. Se conservaron los precios actuales." });
     } finally {
-      setIsUpdatingCryptoPrices(false);
+      setUpdatingPriceGroup(null);
+      setUpdatingAssetId(null);
     }
   }
 
@@ -463,18 +490,41 @@ export function InvestmentManager() {
         <SummaryCard label="Holdings" value={String(holdings.length)} />
       </section>
 
-      <div className="flex flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
         <p>
-          Los precios pueden ser manuales, venir de CoinGecko para cripto o de Alpha Vantage para acciones y ETFs.
+          Los precios pueden ser manuales, venir de CoinGecko para cripto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente.
         </p>
-        <button
-          className="w-full rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300 md:w-auto"
-          disabled={isUpdatingCryptoPrices}
-          onClick={updateCryptoPrices}
-          type="button"
-        >
-          {isUpdatingCryptoPrices ? "Actualizando..." : "Actualizar precios"}
-        </button>
+        <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[360px]">
+          <button
+            className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300"
+            disabled={Boolean(updatingPriceGroup || updatingAssetId)}
+            onClick={() =>
+              updatePrices({
+                assetType: "crypto",
+                provider: "coingecko",
+                successMessage: "Cripto actualizado correctamente.",
+                emptyMessage: "No hay criptos configuradas con CoinGecko.",
+              })
+            }
+            type="button"
+          >
+            {updatingPriceGroup === "crypto" ? "Actualizando..." : "Actualizar cripto"}
+          </button>
+          <button
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={Boolean(updatingPriceGroup || updatingAssetId)}
+            onClick={() =>
+              updatePrices({
+                provider: "alpha_vantage",
+                successMessage: "Acciones/ETFs actualizados correctamente.",
+                emptyMessage: "No hay acciones o ETFs configurados con Alpha Vantage.",
+              })
+            }
+            type="button"
+          >
+            {updatingPriceGroup === "stock_etf" ? "Actualizando..." : "Actualizar acciones/ETFs"}
+          </button>
+        </div>
       </div>
 
       {message ? <StatusMessage message={message} /> : null}
@@ -533,8 +583,17 @@ export function InvestmentManager() {
         />
         <AssetsTable
           assets={assets}
+          isUpdatingPrices={Boolean(updatingPriceGroup)}
+          updatingAssetId={updatingAssetId}
           onEdit={(asset) => startEditAsset(asset)}
           onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
+          onUpdate={(asset) =>
+            updatePrices({
+              assetId: asset.id,
+              successMessage: "Precio actualizado correctamente.",
+              emptyMessage: "Este activo no esta configurado con precio automatico.",
+            })
+          }
         />
       </section>
 
@@ -815,11 +874,25 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
   );
 }
 
-function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; onEdit: (asset: InvestmentAsset) => void; onDelete: (asset: InvestmentAsset) => void }) {
+function AssetsTable({
+  assets,
+  isUpdatingPrices,
+  updatingAssetId,
+  onEdit,
+  onDelete,
+  onUpdate,
+}: {
+  assets: InvestmentAsset[];
+  isUpdatingPrices: boolean;
+  updatingAssetId: string | null;
+  onEdit: (asset: InvestmentAsset) => void;
+  onDelete: (asset: InvestmentAsset) => void;
+  onUpdate: (asset: InvestmentAsset) => void;
+}) {
   return (
     <TableCard title="Activos">
-      <table className="w-full min-w-[900px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[1040px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pr-4 font-medium">Precio</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {assets.map((asset) => (
             <tr className="border-b border-slate-100" key={asset.id}>
@@ -831,6 +904,20 @@ function AssetsTable({ assets, onEdit, onDelete }: { assets: InvestmentAsset[]; 
               <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset.last_price_error} /></td>
               <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
+              <td className="py-3 pr-4">
+                {isAutomaticPriceAsset(asset) ? (
+                  <button
+                    className="rounded-md border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    disabled={isUpdatingPrices || Boolean(updatingAssetId)}
+                    onClick={() => onUpdate(asset)}
+                    type="button"
+                  >
+                    {updatingAssetId === asset.id ? "Actualizando..." : "Actualizar"}
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-500">Manual</span>
+                )}
+              </td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(asset)} onDelete={() => onDelete(asset)} /></td>
             </tr>
           ))}
@@ -1023,6 +1110,12 @@ function getPriceSourceLabel(asset: InvestmentAsset | undefined) {
   if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "CoinGecko";
   if ((asset.asset_type === "stock" || asset.asset_type === "etf") && asset.price_provider === "alpha_vantage") return "Alpha Vantage";
   return "Manual";
+}
+
+function isAutomaticPriceAsset(asset: InvestmentAsset) {
+  if (asset.asset_type === "crypto") return asset.price_provider === "coingecko" || asset.price_source === "coingecko";
+  if (asset.asset_type === "stock" || asset.asset_type === "etf") return asset.price_provider === "alpha_vantage";
+  return false;
 }
 
 function PriceErrorText({ error }: { error: string | null | undefined }) {
