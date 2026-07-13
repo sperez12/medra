@@ -218,7 +218,6 @@ export function DashboardSummary() {
   }));
   const activeAccountSummaries = accountSummaries.filter(({ account }) => account.is_active);
   const accountTotalsByCurrency = groupMoneyByCurrency(activeAccountSummaries, (item) => item.balance, (item) => item.account.currency);
-  const netWorthByCurrency = buildNetWorthByCurrency(accountTotalsByCurrency, totalPendingByCurrency);
   const topAccounts = [...activeAccountSummaries].sort((a, b) => b.balance - a.balance).slice(0, 5);
   const recentAccountMovements = accountMovements.slice(0, 6);
   const recentAccountTransfers = accountTransfers.slice(0, 5);
@@ -241,6 +240,7 @@ export function DashboardSummary() {
     .slice(0, 4);
   const investmentSummaries = holdings.map((holding) => buildInvestmentDashboardSummary(holding, investmentPlatforms, investmentAssets));
   const investmentsByCurrency = groupMoneyByCurrency(investmentSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
+  const netWorthByCurrency = buildNetWorthByCurrency(accountTotalsByCurrency, investmentsByCurrency, totalPendingByCurrency);
   const topInvestmentPlatforms = buildTopInvestmentPlatforms(investmentSummaries).slice(0, 4);
   const topInvestmentAssets = [...investmentSummaries].sort((a, b) => b.value - a.value).slice(0, 4);
   const summaryCurrencies = Array.from(
@@ -327,22 +327,23 @@ export function DashboardSummary() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
-          <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
+          <h2 className="text-xl font-semibold text-slate-950">Patrimonio neto estimado</h2>
+          <p className="text-sm text-slate-600">
+            Cuentas mas inversiones, menos saldo pendiente de tarjetas. No hay conversion automatica entre monedas. Cada moneda se muestra por separado.
+          </p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
-          <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
-          <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
-          <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {netWorthByCurrency.map((row) => (
+            <NetWorthCard key={row.currency} row={row} />
+          ))}
         </div>
-        <UpcomingGoals goals={upcomingGoals} />
+        {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas, inversiones ni saldos de tarjeta para calcular patrimonio." /> : null}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Inversiones</h2>
-          <p className="text-sm text-slate-600">Valores estimados con precios manuales. Sin cotizaciones automaticas todavia.</p>
+          <p className="text-sm text-slate-600">Valores estimados con el precio actual registrado en cada activo.</p>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Valor total" value={<MoneyTotals totals={investmentsByCurrency} />} />
@@ -358,6 +359,20 @@ export function DashboardSummary() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
+          <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
+          <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
+          <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
+          <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
+        </div>
+        <UpcomingGoals goals={upcomingGoals} />
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Presupuestos del mes</h2>
           <p className="text-sm text-slate-600">Resumen de presupuestos activos del mes actual, separado por moneda.</p>
         </div>
@@ -368,21 +383,6 @@ export function DashboardSummary() {
           <SummaryCard label="Cerca del limite" value={String(nearLimitBudgets.length)} />
         </div>
         {currentBudgetSummaries.length === 0 ? <EmptyTableMessage text="Aun no hay presupuestos activos para el mes actual." /> : null}
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-slate-950">Patrimonio estimado por moneda</h2>
-          <p className="text-sm text-slate-600">
-            Cuentas menos saldo pendiente de tarjetas. Sin conversion automatica entre monedas.
-          </p>
-        </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {netWorthByCurrency.map((row) => (
-            <NetWorthCard key={row.currency} row={row} />
-          ))}
-        </div>
-        {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas ni saldos de tarjeta para calcular patrimonio." /> : null}
       </section>
 
       <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -517,19 +517,24 @@ function calculateAccountBalance(account: Account, movements: AccountMovement[])
 
 function buildNetWorthByCurrency(
   accountTotals: Array<{ currency: string; amount: number }>,
+  investmentTotals: Array<{ currency: string; amount: number }>,
   pendingTotals: Array<{ currency: string; amount: number }>
 ) {
-  const currencies = Array.from(new Set([...accountTotals, ...pendingTotals].map((total) => normalizeCurrency(total.currency)))).sort();
+  const currencies = Array.from(
+    new Set([...accountTotals, ...investmentTotals, ...pendingTotals].map((total) => normalizeCurrency(total.currency)))
+  ).sort();
 
   return currencies.map((currency) => {
     const accounts = getTotalForCurrency(accountTotals, currency);
+    const investments = getTotalForCurrency(investmentTotals, currency);
     const pendingCards = getTotalForCurrency(pendingTotals, currency);
 
     return {
       currency,
       accounts,
+      investments,
       pendingCards,
-      netWorth: accounts - pendingCards,
+      netWorth: accounts + investments - pendingCards,
     };
   });
 }
@@ -666,6 +671,7 @@ function NetWorthCard({
   row: {
     currency: string;
     accounts: number;
+    investments: number;
     pendingCards: number;
     netWorth: number;
   };
@@ -676,7 +682,8 @@ function NetWorthCard({
       <p className="mt-2 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
       <div className="mt-3 space-y-1 text-sm text-slate-600">
         <p>Cuentas: {formatCurrency(row.accounts, row.currency)}</p>
-        <p>Pendiente tarjetas: {formatCurrency(row.pendingCards, row.currency)}</p>
+        <p>Inversiones: {formatCurrency(row.investments, row.currency)}</p>
+        <p>Deuda tarjetas: {formatCurrency(row.pendingCards, row.currency)}</p>
       </div>
     </article>
   );
