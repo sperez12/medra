@@ -53,6 +53,15 @@ type NetWorthSnapshotRow = {
   netWorth: number;
 };
 
+type SnapshotHistoryRow = {
+  currency: string;
+  snapshots: NetWorthSnapshot[];
+  firstSnapshot: NetWorthSnapshot | null;
+  lastSnapshot: NetWorthSnapshot | null;
+  absoluteChange: number;
+  percentChange: number | null;
+};
+
 export function BasicReports() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [cards, setCards] = useState<CreditCard[]>([]);
@@ -468,12 +477,24 @@ function buildSnapshotHistoryRows(snapshots: NetWorthSnapshot[]) {
     latestByCurrency.set(currency, [...(latestByCurrency.get(currency) ?? []), snapshot]);
   });
 
-  return Array.from(latestByCurrency.entries()).map(([currency, rows]) => ({
-    currency,
-    snapshots: rows
-      .sort((a, b) => new Date(a.snapshot_date).getTime() - new Date(b.snapshot_date).getTime())
-      .slice(-6),
-  }));
+  return Array.from(latestByCurrency.entries()).map(([currency, rows]) => {
+    const sortedRows = rows.sort((a, b) => new Date(a.snapshot_date).getTime() - new Date(b.snapshot_date).getTime());
+    const firstSnapshot = sortedRows[0] ?? null;
+    const lastSnapshot = sortedRows[sortedRows.length - 1] ?? null;
+    const firstNetWorth = Number(firstSnapshot?.net_worth ?? 0);
+    const lastNetWorth = Number(lastSnapshot?.net_worth ?? 0);
+    const absoluteChange = lastNetWorth - firstNetWorth;
+    const percentChange = firstSnapshot && firstNetWorth !== 0 ? (absoluteChange / Math.abs(firstNetWorth)) * 100 : null;
+
+    return {
+      currency,
+      snapshots: sortedRows.slice(-6),
+      firstSnapshot,
+      lastSnapshot,
+      absoluteChange,
+      percentChange,
+    };
+  });
 }
 
 function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[]): ReportRow[] {
@@ -612,8 +633,12 @@ function SummaryCard({ label, value, strong = false }: { label: string; value: R
 function NetWorthPreviewCard({ row }: { row: NetWorthSnapshotRow }) {
   return (
     <article className="rounded-md border border-slate-200 bg-slate-50 p-4">
-      <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
-      <p className="mt-2 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-700">Moneda</p>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{row.currency}</span>
+      </div>
+      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">Patrimonio neto</p>
+      <p className="mt-1 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
       <div className="mt-3 space-y-1 text-sm text-slate-600">
         <p>Cuentas: {formatCurrency(row.totalAccounts, row.currency)}</p>
         <p>Inversiones: {formatCurrency(row.totalInvestments, row.currency)}</p>
@@ -626,10 +651,7 @@ function NetWorthPreviewCard({ row }: { row: NetWorthSnapshotRow }) {
 function SnapshotHistoryBars({
   rows,
 }: {
-  rows: Array<{
-    currency: string;
-    snapshots: NetWorthSnapshot[];
-  }>;
+  rows: SnapshotHistoryRow[];
 }) {
   return (
     <div className="rounded-md border border-slate-200 p-4">
@@ -637,9 +659,30 @@ function SnapshotHistoryBars({
       <div className="mt-4 space-y-5">
         {rows.map((row) => {
           const max = Math.max(...row.snapshots.map((snapshot) => Math.abs(Number(snapshot.net_worth))), 1);
+          const hasEvolution = row.snapshots.length > 1;
+          const changeTone = row.absoluteChange >= 0 ? "text-emerald-700" : "text-red-700";
+
           return (
             <div className="space-y-3" key={row.currency}>
-              <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
+              <div className="flex flex-col gap-2 rounded-md bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{row.currency}</p>
+                  {hasEvolution ? (
+                    <p className={`text-xs font-medium ${changeTone}`}>
+                      Cambio: {formatCurrency(row.absoluteChange, row.currency)}
+                      {row.percentChange === null ? "" : ` (${formatPercentChange(row.percentChange)})`}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600">Necesitas mas de un snapshot en esta moneda para ver evolucion.</p>
+                  )}
+                </div>
+                {row.lastSnapshot ? (
+                  <div className="text-sm sm:text-right">
+                    <p className="font-semibold text-slate-950">{formatCurrency(Number(row.lastSnapshot.net_worth), row.currency)}</p>
+                    <p className="text-xs text-slate-500">Ultimo: {formatDate(row.lastSnapshot.snapshot_date)}</p>
+                  </div>
+                ) : null}
+              </div>
               {row.snapshots.map((snapshot) => (
                 <div key={snapshot.id}>
                   <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
@@ -658,12 +701,23 @@ function SnapshotHistoryBars({
           );
         })}
       </div>
-      {rows.length === 0 ? <EmptyMessage text="Aun no hay snapshots guardados." /> : null}
+      {rows.length === 0 ? (
+        <EmptyMessage text="Todavia no tienes snapshots de patrimonio. Guarda uno para empezar a ver tu evolucion." />
+      ) : null}
     </div>
   );
 }
 
 function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]; onDelete: (snapshot: NetWorthSnapshot) => void }) {
+  if (snapshots.length === 0) {
+    return (
+      <div className="rounded-md border border-slate-200 p-4">
+        <h3 className="font-semibold text-slate-950">Snapshots recientes</h3>
+        <EmptyMessage text="Todavia no tienes snapshots de patrimonio. Guarda uno para empezar a ver tu evolucion." />
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Snapshots recientes</h3>
@@ -685,11 +739,13 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
             {snapshots.map((snapshot) => (
               <tr className="border-b border-slate-100" key={snapshot.id}>
                 <td className="py-3 pr-3 text-slate-700">{formatDate(snapshot.snapshot_date)}</td>
-                <td className="py-3 pr-3 text-slate-700">{snapshot.currency}</td>
+                <td className="py-3 pr-3">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{snapshot.currency}</span>
+                </td>
                 <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.total_accounts), snapshot.currency)}</td>
                 <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.total_investments), snapshot.currency)}</td>
                 <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.pending_credit_cards), snapshot.currency)}</td>
-                <td className="py-3 pr-3 text-right font-semibold text-slate-950">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</td>
+                <td className="py-3 pr-3 text-right text-base font-bold text-slate-950">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</td>
                 <td className="py-3 pr-3 text-slate-700">{snapshot.notes || "Sin notas"}</td>
                 <td className="py-3 text-right">
                   <button className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => onDelete(snapshot)} type="button">
@@ -701,7 +757,6 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
           </tbody>
         </table>
       </div>
-      {snapshots.length === 0 ? <EmptyMessage text="Aun no hay snapshots recientes." /> : null}
     </div>
   );
 }
@@ -854,7 +909,16 @@ function InlineMessage({ message }: { message: Message }) {
 }
 
 function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatPercentChange(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(1)}%`;
 }
 
 function getFriendlySnapshotError(error: string) {
