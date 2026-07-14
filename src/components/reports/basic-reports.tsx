@@ -437,27 +437,35 @@ export function BasicReports() {
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Reportes</h1>
         <p className="mt-2 text-slate-600">
-          Reportes simples de gastos, pagos y tarjetas. Vista actual: {getPeriodLabel(periodFilter)}.
+          Analiza gastos, pagos, patrimonio por moneda y patrimonio consolidado visual. Vista actual: {getPeriodLabel(periodFilter)}.
         </p>
       </section>
+
+      <ReportsInternalNavigation />
 
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
       {message ? <InlineMessage message={message} /> : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
-        <SummaryCard label="Total pagado" value={<MoneyTotals totals={totalPaidByCurrency} />} />
-        <SummaryCard label="Pendiente estimado" value={<MoneyTotals totals={pendingByCurrency} />} strong />
-        <SummaryCard label="Categoria principal" value={topCategory} />
-        <SummaryCard label="Tarjeta principal" value={topCard} />
+      <section className="scroll-mt-24 space-y-4" id="resumen">
+        <SectionIntro
+          title="Resumen"
+          description="Vista rapida del periodo seleccionado para gastos, pagos y tarjetas."
+        />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
+          <SummaryCard label="Total pagado" value={<MoneyTotals totals={totalPaidByCurrency} />} />
+          <SummaryCard label="Pendiente estimado" value={<MoneyTotals totals={pendingByCurrency} />} strong />
+          <SummaryCard label="Categoria principal" value={topCategory} />
+          <SummaryCard label="Tarjeta principal" value={topCard} />
+        </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-5 shadow-sm" id="historial-patrimonio">
         <div className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold text-slate-950">Historial de patrimonio</h2>
           <p className="text-sm text-slate-600">
-            Guarda snapshots manuales por moneda. No hay conversion automatica entre monedas.
+            Guarda snapshots manuales por moneda para comparar tu evolucion. No hay conversion automatica entre monedas.
           </p>
         </div>
 
@@ -500,46 +508,56 @@ export function BasicReports() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_420px]">
-        <ConsolidatedNetWorthSection
-          baseCurrency={baseCurrency}
-          onBaseCurrencyChange={setBaseCurrency}
-          result={consolidatedNetWorth}
-        />
-        <ExchangeRatesSection
-          editingRateId={editingExchangeRateId}
-          form={exchangeRateForm}
-          isSaving={isSavingExchangeRate}
-          onCancelEdit={resetExchangeRateForm}
-          onChange={setExchangeRateForm}
-          onDelete={deleteExchangeRate}
-          onEdit={startEditingExchangeRate}
-          onSave={saveExchangeRate}
-          rates={exchangeRates.slice(0, 8)}
-        />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <BarReport title="Gasto por categoria" rows={expensesByCategory} emptyText="No hay gastos por categoria en este periodo." />
-        <BarReport title="Gasto por tarjeta" rows={expensesByCard} emptyText="No hay gastos por tarjeta en este periodo." />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <BarReport title="Pagos por tarjeta" rows={paymentsByCard} emptyText="No hay pagos por tarjeta en este periodo." />
-        <ComparisonReport rows={comparisonByCard} />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-500">Promedio de gasto por dia</p>
-          <div className="mt-2 text-3xl font-bold text-slate-950">
-            <MoneyTotals totals={dailyAverageByCurrency} />
-          </div>
-          <p className="mt-2 text-sm text-slate-500">Calculado sobre el periodo seleccionado.</p>
+        <div className="scroll-mt-24" id="patrimonio-consolidado">
+          <ConsolidatedNetWorthSection
+            baseCurrency={baseCurrency}
+            onBaseCurrencyChange={setBaseCurrency}
+            result={consolidatedNetWorth}
+          />
         </div>
-        <HighestExpensesTable expenses={highestExpenses} cards={cards} categories={categories} />
+        <div className="scroll-mt-24" id="tipos-cambio">
+          <ExchangeRatesSection
+            editingRateId={editingExchangeRateId}
+            form={exchangeRateForm}
+            isSaving={isSavingExchangeRate}
+            onCancelEdit={resetExchangeRateForm}
+            onChange={setExchangeRateForm}
+            onDelete={deleteExchangeRate}
+            onEdit={startEditingExchangeRate}
+            onSave={saveExchangeRate}
+            rates={exchangeRates.slice(0, 8)}
+          />
+        </div>
       </section>
 
-      <RecentPaymentsTable payments={recentPayments} cards={cards} />
+      <section className="scroll-mt-24 space-y-4" id="reportes-basicos">
+        <SectionIntro
+          title="Reportes de gastos y pagos"
+          description="Detalle del periodo seleccionado. Estos reportes no usan tipos de cambio."
+        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <BarReport title="Gasto por categoria" rows={expensesByCategory} emptyText="No hay gastos por categoria en este periodo." />
+          <BarReport title="Gasto por tarjeta" rows={expensesByCard} emptyText="No hay gastos por tarjeta en este periodo." />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <BarReport title="Pagos por tarjeta" rows={paymentsByCard} emptyText="No hay pagos por tarjeta en este periodo." />
+          <ComparisonReport rows={comparisonByCard} />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Promedio de gasto por dia</p>
+            <div className="mt-2 text-3xl font-bold text-slate-950">
+              <MoneyTotals totals={dailyAverageByCurrency} />
+            </div>
+            <p className="mt-2 text-sm text-slate-500">Calculado sobre el periodo seleccionado.</p>
+          </div>
+          <HighestExpensesTable expenses={highestExpenses} cards={cards} categories={categories} />
+        </div>
+
+        <RecentPaymentsTable payments={recentPayments} cards={cards} />
+      </section>
     </div>
   );
 }
@@ -932,6 +950,41 @@ function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: num
   );
 }
 
+function ReportsInternalNavigation() {
+  const links = [
+    { href: "#resumen", label: "Resumen" },
+    { href: "#historial-patrimonio", label: "Historial de patrimonio" },
+    { href: "#tipos-cambio", label: "Tipos de cambio" },
+    { href: "#patrimonio-consolidado", label: "Patrimonio consolidado" },
+    { href: "#reportes-basicos", label: "Gastos y pagos" },
+  ];
+
+  return (
+    <nav className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm" aria-label="Navegacion de reportes">
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => (
+          <a
+            className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+            href={link.href}
+            key={link.href}
+          >
+            {link.label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function SectionIntro({ title, description }: { title: string; description: string }) {
+  return (
+    <div>
+      <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
+      <p className="mt-1 text-sm text-slate-600">{description}</p>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -1089,7 +1142,7 @@ function ConsolidatedNetWorthSection({
         <div>
           <h2 className="text-xl font-semibold text-slate-950">Reporte patrimonial consolidado</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Conversion solo visual para reportes. Tus saldos originales no se modifican.
+            Conversion solo visual para reportes. Tus saldos originales no se modifican y solo se usan tasas directas.
           </p>
         </div>
         <label className="text-sm font-medium text-slate-700">
@@ -1145,7 +1198,7 @@ function ConsolidatedNetWorthSection({
       <div className="mt-5 rounded-md border border-slate-200 p-4">
         <h3 className="font-semibold text-slate-950">Comparacion contra ultimo snapshot</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Usa el ultimo snapshot disponible por moneda y las tasas manuales mas recientes hacia {result.baseCurrency}.
+          Usa el ultimo snapshot disponible por moneda y las tasas manuales directas mas recientes hacia {result.baseCurrency}.
         </p>
 
         {result.snapshotComparison.rows.length === 0 ? (
