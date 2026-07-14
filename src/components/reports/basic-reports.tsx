@@ -80,8 +80,23 @@ type ConsolidatedNetWorthResult = {
     convertedAmount: number | null;
     rate: ManualExchangeRate | null;
     missingRate: boolean;
+    sourceDate: string | null;
   }>;
   missingRates: string[];
+  snapshotComparison: {
+    total: number;
+    rows: Array<{
+      currency: string;
+      originalAmount: number;
+      convertedAmount: number | null;
+      rate: ManualExchangeRate | null;
+      missingRate: boolean;
+      sourceDate: string | null;
+    }>;
+    missingRates: string[];
+    difference: number | null;
+    percentDifference: number | null;
+  };
 };
 
 type SupabaseErrorLike = {
@@ -259,7 +274,7 @@ export function BasicReports() {
     periodFilter,
   });
   const snapshotHistoryRows = buildSnapshotHistoryRows(snapshots);
-  const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, exchangeRates, baseCurrency);
+  const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, exchangeRates, baseCurrency, snapshots);
   const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
   const topCard = expensesByCard[0] ? `${expensesByCard[0].label} (${expensesByCard[0].currency})` : "Sin datos";
   const dayCount = getPeriodDayCount(periodFilter, cards);
@@ -663,54 +678,119 @@ function buildSnapshotHistoryRows(snapshots: NetWorthSnapshot[]) {
 function buildConsolidatedNetWorth(
   rows: NetWorthSnapshotRow[],
   rates: ManualExchangeRate[],
-  baseCurrency: string
+  baseCurrency: string,
+  snapshots: NetWorthSnapshot[]
 ): ConsolidatedNetWorthResult {
+  const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
+  const currentConversion = convertNetWorthAmounts(
+    rows.map((row) => ({
+      currency: row.currency,
+      amount: row.netWorth,
+      sourceDate: null,
+    })),
+    rates,
+    normalizedBaseCurrency
+  );
+  const snapshotConversion = convertNetWorthAmounts(buildLatestSnapshotAmounts(snapshots), rates, normalizedBaseCurrency);
+  const difference = snapshotConversion.rows.length > 0 ? currentConversion.total - snapshotConversion.total : null;
+  const percentDifference =
+    difference !== null && snapshotConversion.total !== 0 ? (difference / Math.abs(snapshotConversion.total)) * 100 : null;
+
+  return {
+    baseCurrency: normalizedBaseCurrency,
+    total: currentConversion.total,
+    rows: currentConversion.rows,
+    missingRates: currentConversion.missingRates,
+    snapshotComparison: {
+      total: snapshotConversion.total,
+      rows: snapshotConversion.rows,
+      missingRates: snapshotConversion.missingRates,
+      difference,
+      percentDifference,
+    },
+  };
+}
+
+function convertNetWorthAmounts(
+  amounts: Array<{ currency: string; amount: number; sourceDate: string | null }>,
+  rates: ManualExchangeRate[],
+  baseCurrency: string
+) {
   const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
   let total = 0;
   const missingRates: string[] = [];
 
-  const convertedRows = rows.map((row) => {
+  const convertedRows = amounts.map((row) => {
     const currency = normalizeCurrency(row.currency);
     if (currency === normalizedBaseCurrency) {
-      total += row.netWorth;
+      total += row.amount;
       return {
         currency,
-        originalAmount: row.netWorth,
-        convertedAmount: row.netWorth,
+        originalAmount: row.amount,
+        convertedAmount: row.amount,
         rate: null,
         missingRate: false,
+        sourceDate: row.sourceDate,
       };
     }
 
-    const rate = findLatestExchangeRate(rates, currency, normalizedBaseCurrency);
+    const rate = findLatestExchangeRate(rates, currency, baseCurrency);
     if (!rate) {
-      missingRates.push(`${currency} -> ${normalizedBaseCurrency}`);
+      missingRates.push(`${currency} -> ${baseCurrency}`);
       return {
         currency,
-        originalAmount: row.netWorth,
+        originalAmount: row.amount,
         convertedAmount: null,
         rate: null,
         missingRate: true,
+        sourceDate: row.sourceDate,
       };
     }
 
-    const convertedAmount = row.netWorth * Number(rate.rate);
+    const convertedAmount = row.amount * Number(rate.rate);
     total += convertedAmount;
     return {
       currency,
-      originalAmount: row.netWorth,
+      originalAmount: row.amount,
       convertedAmount,
       rate,
       missingRate: false,
+      sourceDate: row.sourceDate,
     };
   });
 
   return {
-    baseCurrency: normalizedBaseCurrency,
     total,
     rows: convertedRows,
     missingRates,
   };
+}
+
+function buildLatestSnapshotAmounts(snapshots: NetWorthSnapshot[]) {
+  const latestByCurrency = new Map<string, NetWorthSnapshot>();
+
+  snapshots.forEach((snapshot) => {
+    const currency = normalizeCurrency(snapshot.currency);
+    const current = latestByCurrency.get(currency);
+    if (!current) {
+      latestByCurrency.set(currency, snapshot);
+      return;
+    }
+
+    const snapshotDate = new Date(snapshot.snapshot_date).getTime();
+    const currentDate = new Date(current.snapshot_date).getTime();
+    if (snapshotDate > currentDate || (snapshotDate === currentDate && new Date(snapshot.created_at).getTime() > new Date(current.created_at).getTime())) {
+      latestByCurrency.set(currency, snapshot);
+    }
+  });
+
+  return Array.from(latestByCurrency.values())
+    .map((snapshot) => ({
+      currency: snapshot.currency,
+      amount: Number(snapshot.net_worth),
+      sourceDate: snapshot.snapshot_date,
+    }))
+    .sort((a, b) => normalizeCurrency(a.currency).localeCompare(normalizeCurrency(b.currency)));
 }
 
 function findLatestExchangeRate(rates: ManualExchangeRate[], fromCurrency: string, toCurrency: string) {
@@ -1007,7 +1087,7 @@ function ConsolidatedNetWorthSection({
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-950">Patrimonio consolidado estimado</h2>
+          <h2 className="text-xl font-semibold text-slate-950">Reporte patrimonial consolidado</h2>
           <p className="mt-1 text-sm text-slate-600">
             Conversion solo visual para reportes. Tus saldos originales no se modifican.
           </p>
@@ -1019,7 +1099,7 @@ function ConsolidatedNetWorthSection({
       </div>
 
       <div className="mt-5 rounded-md bg-slate-950 p-4 text-white">
-        <p className="text-sm text-slate-300">Total consolidado visible</p>
+        <p className="text-sm text-slate-300">Total consolidado estimado en {result.baseCurrency}</p>
         <p className="mt-1 text-3xl font-bold">{formatCurrency(result.total, result.baseCurrency)}</p>
       </div>
 
@@ -1029,7 +1109,12 @@ function ConsolidatedNetWorthSection({
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-slate-950">Patrimonio actual por moneda</h3>
+        <p className="mt-1 text-xs text-slate-500">Si falta una tasa directa, esa moneda se excluye del total consolidado.</p>
+      </div>
+
+      <div className="mt-3 space-y-3">
         {result.rows.map((row) => (
           <div className="rounded-md border border-slate-200 p-3" key={row.currency}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1055,6 +1140,77 @@ function ConsolidatedNetWorthSection({
           </div>
         ))}
         {result.rows.length === 0 ? <EmptyMessage text="Aun no hay patrimonio por moneda para consolidar." /> : null}
+      </div>
+
+      <div className="mt-5 rounded-md border border-slate-200 p-4">
+        <h3 className="font-semibold text-slate-950">Comparacion contra ultimo snapshot</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Usa el ultimo snapshot disponible por moneda y las tasas manuales mas recientes hacia {result.baseCurrency}.
+        </p>
+
+        {result.snapshotComparison.rows.length === 0 ? (
+          <EmptyMessage text="Aun no hay snapshots para comparar contra el patrimonio actual." />
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <SummaryCard
+                label="Actual consolidado"
+                value={formatCurrency(result.total, result.baseCurrency)}
+                strong
+              />
+              <SummaryCard
+                label="Ultimo snapshot convertible"
+                value={formatCurrency(result.snapshotComparison.total, result.baseCurrency)}
+              />
+              <SummaryCard
+                label="Diferencia"
+                value={
+                  result.snapshotComparison.difference === null
+                    ? "Sin datos"
+                    : `${formatCurrency(result.snapshotComparison.difference, result.baseCurrency)}${
+                        result.snapshotComparison.percentDifference === null ? "" : ` (${formatPercentChange(result.snapshotComparison.percentDifference)})`
+                      }`
+                }
+                strong
+              />
+            </div>
+
+            {result.snapshotComparison.missingRates.length > 0 ? (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Faltan tasas para convertir snapshots: {result.snapshotComparison.missingRates.join(", ")}. Esas monedas no se sumaron a la comparacion.
+              </div>
+            ) : null}
+
+            <div className="mt-4 space-y-3">
+              {result.snapshotComparison.rows.map((row) => (
+                <div className="rounded-md bg-slate-50 p-3" key={row.currency}>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
+                      <p className="text-sm text-slate-600">
+                        Snapshot {row.sourceDate ? formatDate(row.sourceDate) : "sin fecha"}: {formatCurrency(row.originalAmount, row.currency)}
+                      </p>
+                    </div>
+                    <div className="text-sm sm:text-right">
+                      {row.convertedAmount === null ? (
+                        <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-slate-950">{formatCurrency(row.convertedAmount, result.baseCurrency)}</p>
+                          <p className="text-xs text-slate-500">
+                            {row.rate
+                              ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date)}`
+                              : "Sin conversion: ya esta en la moneda base"}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
