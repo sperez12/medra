@@ -507,27 +507,26 @@ export function BasicReports() {
         </div>
       </section>
 
-      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="min-w-0 scroll-mt-24" id="patrimonio-consolidado">
-          <ConsolidatedNetWorthSection
-            baseCurrency={baseCurrency}
-            onBaseCurrencyChange={setBaseCurrency}
-            result={consolidatedNetWorth}
-          />
-        </div>
-        <div className="min-w-0 scroll-mt-24" id="tipos-cambio">
-          <ExchangeRatesSection
-            editingRateId={editingExchangeRateId}
-            form={exchangeRateForm}
-            isSaving={isSavingExchangeRate}
-            onCancelEdit={resetExchangeRateForm}
-            onChange={setExchangeRateForm}
-            onDelete={deleteExchangeRate}
-            onEdit={startEditingExchangeRate}
-            onSave={saveExchangeRate}
-            rates={exchangeRates.slice(0, 8)}
-          />
-        </div>
+      <section className="min-w-0 scroll-mt-24" id="patrimonio-consolidado">
+        <ConsolidatedNetWorthSection
+          baseCurrency={baseCurrency}
+          onBaseCurrencyChange={setBaseCurrency}
+          result={consolidatedNetWorth}
+        />
+      </section>
+
+      <section className="min-w-0 scroll-mt-24" id="tipos-cambio">
+        <ExchangeRatesSection
+          editingRateId={editingExchangeRateId}
+          form={exchangeRateForm}
+          isSaving={isSavingExchangeRate}
+          onCancelEdit={resetExchangeRateForm}
+          onChange={setExchangeRateForm}
+          onDelete={deleteExchangeRate}
+          onEdit={startEditingExchangeRate}
+          onSave={saveExchangeRate}
+          rates={exchangeRates.slice(0, 8)}
+        />
       </section>
 
       <section className="scroll-mt-24 space-y-4" id="reportes-basicos">
@@ -1367,7 +1366,7 @@ function ExchangeRatesSection({
 
       <div className="mt-5">
         <h3 className="text-sm font-semibold text-slate-950">Tipos recientes</h3>
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
           {rates.map((rate) => (
             <div className="min-w-0 rounded-md border border-slate-200 p-3" key={rate.id}>
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

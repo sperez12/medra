@@ -405,16 +405,16 @@ export function ExpenseManager() {
         {message ? <StatusMessage message={message} /> : null}
       </form>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4">
-          <div>
+      <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex min-w-0 flex-col gap-4">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-slate-950">Gastos</h2>
             <p className="mt-1 text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
           </div>
           <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
         </div>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
-        <div className="mt-4 max-w-full overflow-x-auto">
+        <div className="mt-4 w-full max-w-full overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">

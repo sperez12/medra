@@ -10,7 +10,6 @@ const sections = [
   { label: "Pagos", href: "/pagos" },
   { label: "Cuentas", href: "/cuentas" },
   { label: "Inversiones", href: "/inversiones" },
-  { label: "Cripto", href: "/cripto" },
   { label: "Presupuestos", href: "/presupuestos" },
   { label: "Metas", href: "/metas" },
   { label: "Calendario", href: "/calendario" },

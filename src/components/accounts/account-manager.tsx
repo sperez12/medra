@@ -507,7 +507,7 @@ export function AccountManager() {
   const recentTransfers = transfers.slice(0, 8);
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Cuentas</h1>
         <p className="mt-2 text-slate-600">
@@ -573,7 +573,7 @@ function AccountForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+    <form className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingAccountId ? "Editar cuenta" : "Nueva cuenta"}</h2>
       <div className="mt-4 grid gap-4">
         <TextInput label="Nombre de la cuenta" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
@@ -619,12 +619,12 @@ function AccountList({
   onDelete: (account: Account) => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-slate-950">Cuentas registradas</h2>
       {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando cuentas...</p> : null}
       <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
         {accountSummaries.map(({ account, balance, movementCount }) => (
-          <article className="rounded-lg border border-slate-200 p-4" key={account.id}>
+          <article className="min-w-0 rounded-lg border border-slate-200 p-4" key={account.id}>
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h3 className="font-semibold text-slate-950">{account.name}</h3>
@@ -636,10 +636,10 @@ function AccountList({
               <StatusPill active={account.is_active} />
             </div>
             <p className="mt-4 text-sm text-slate-500">Saldo actual estimado</p>
-            <p className="text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
+            <p className="break-words text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
             <p className="mt-1 text-xs text-slate-500">{movementCount} movimiento(s)</p>
             {account.description ? <p className="mt-3 text-sm text-slate-600">{account.description}</p> : null}
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => onEdit(account)} type="button">
                 Editar
               </button>
@@ -673,7 +673,7 @@ function TransferForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+    <form className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingTransferId ? "Editar transferencia" : "Nueva transferencia"}</h2>
       <p className="mt-1 text-sm text-slate-600">Por ahora solo se permiten transferencias entre cuentas con la misma moneda.</p>
       <div className="mt-4 grid gap-4">
@@ -707,7 +707,7 @@ function MovementForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+    <form className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">Nuevo movimiento manual</h2>
       <div className="mt-4 grid gap-4">
         <AccountSelect accounts={accounts} label="Cuenta" value={form.account_id} onChange={(value) => onChange({ ...form, account_id: value })} />
@@ -739,9 +739,9 @@ function RecentTransfers({
   onEdit: (transfer: AccountTransfer) => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-slate-950">Transferencias recientes</h2>
-      <div className="mt-4 max-w-full overflow-x-auto">
+      <div className="mt-4 w-full max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -787,9 +787,9 @@ function RecentTransfers({
 
 function RecentMovements({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-slate-950">Ultimos movimientos</h2>
-      <div className="mt-4 max-w-full overflow-x-auto">
+      <div className="mt-4 w-full max-w-full overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
