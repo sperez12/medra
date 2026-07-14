@@ -13,9 +13,9 @@ export function PeriodFilterControls({ value, onChange }: PeriodFilterControlsPr
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <p className="text-sm font-medium text-slate-700">Periodo</p>
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex min-w-0 flex-wrap gap-2">
         <FilterButton active={value.mode === "card_current"} onClick={() => updateMode("card_current")}>
           Periodo actual
         </FilterButton>
@@ -31,7 +31,7 @@ export function PeriodFilterControls({ value, onChange }: PeriodFilterControlsPr
       </div>
 
       {value.mode === "custom" ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="text-sm text-slate-600">Fecha inicial</span>
             <input
@@ -67,7 +67,7 @@ function FilterButton({
 }) {
   return (
     <button
-      className={`rounded-md border px-3 py-2 text-sm ${
+      className={`max-w-full rounded-md border px-3 py-2 text-sm ${
         active
           ? "border-teal-600 bg-teal-50 text-teal-700"
           : "border-slate-200 bg-white text-slate-700 hover:border-teal-500"

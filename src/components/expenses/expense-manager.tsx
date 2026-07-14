@@ -280,8 +280,8 @@ export function ExpenseManager() {
   );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
-      <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
+    <div className="grid max-w-full min-w-0 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
+      <form className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={handleSubmit}>
         <h2 className="text-lg font-semibold text-slate-950">
           {editingExpenseId ? "Editar gasto" : "Nuevo gasto"}
         </h2>
@@ -414,7 +414,7 @@ export function ExpenseManager() {
           <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
         </div>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 max-w-full overflow-x-auto">
           <table className="w-full min-w-[860px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500">

@@ -124,7 +124,7 @@ export function FinancialCalendar() {
         </p>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Vencidos" value={overdueCount} tone="danger" />
         <SummaryCard label="Esta semana" value={thisWeekCount} tone="warning" />
         <SummaryCard label="Próximos" value={upcomingCount} tone="neutral" />
@@ -314,8 +314,8 @@ function EventItem({ event }: { event: CalendarEvent }) {
 
   return (
     <article className={`rounded-lg border border-l-4 border-slate-200 bg-white p-4 text-slate-700 shadow-sm ${typeStyles[event.type].accent}`}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${typeStyles[event.type].chip}`}>
               {getEventTypeLabel(event.type)}

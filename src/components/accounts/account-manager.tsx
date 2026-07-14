@@ -515,13 +515,13 @@ export function AccountManager() {
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid min-w-0 gap-4 md:grid-cols-3">
         <SummaryCard label="Totales por moneda" value={<MoneyTotals totals={totalsByCurrency} />} />
         <SummaryCard label="Cuentas activas" value={String(activeAccounts.length)} />
         <SummaryCard label="Transferencias" value={String(transfers.length)} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <AccountForm
           editingAccountId={editingAccountId}
           form={accountForm}
@@ -537,7 +537,7 @@ export function AccountManager() {
         />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <TransferForm
           accounts={accounts}
           editingTransferId={editingTransferId}
@@ -549,7 +549,7 @@ export function AccountManager() {
         <RecentTransfers accounts={accounts} transfers={recentTransfers} onDelete={deleteTransfer} onEdit={startEditTransfer} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <MovementForm accounts={accounts} form={movementForm} onChange={setMovementForm} onSubmit={handleMovementSubmit} />
         <RecentMovements accounts={accounts} movements={recentMovements} />
       </section>
@@ -622,11 +622,11 @@ function AccountList({
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Cuentas registradas</h2>
       {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando cuentas...</p> : null}
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
         {accountSummaries.map(({ account, balance, movementCount }) => (
           <article className="rounded-lg border border-slate-200 p-4" key={account.id}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <h3 className="font-semibold text-slate-950">{account.name}</h3>
                 <p className="text-sm text-slate-500">{account.institution || "Sin institucion"}</p>
                 <p className="mt-1 text-sm text-slate-600">
@@ -741,7 +741,7 @@ function RecentTransfers({
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Transferencias recientes</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -789,7 +789,7 @@ function RecentMovements({ accounts, movements }: { accounts: Account[]; movemen
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Ultimos movimientos</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">

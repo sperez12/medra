@@ -318,7 +318,7 @@ export function DashboardSummary() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
         <p className="mt-2 text-slate-600">
@@ -331,7 +331,7 @@ export function DashboardSummary() {
 
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid min-w-0 gap-4 md:grid-cols-3">
         <SmallStat label="Tarjetas activas" value={cards.length} />
         <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
         <SmallStat label="Presupuestos activos" value={currentBudgetSummaries.length} />
@@ -347,7 +347,7 @@ export function DashboardSummary() {
             Cuentas mas inversiones, menos saldo pendiente de tarjetas. No hay conversion automatica entre monedas. Cada moneda se muestra por separado.
           </p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {netWorthByCurrency.map((row) => (
             <NetWorthCard key={row.currency} row={row} />
           ))}
@@ -363,19 +363,19 @@ export function DashboardSummary() {
           </p>
         </div>
 
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Tarjetas activas" value={String(cards.length)} />
           <SummaryCard label="Deuda pendiente" value={<MoneyTotals totals={totalPendingByCurrency} />} strong />
           <SummaryCard label="Credito disponible" value={<MoneyTotals totals={totalAvailableByCurrency} />} />
           <SummaryCard label="Uso promedio" value={`${averageCreditUsage.toFixed(1)}%`} />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
           <CardHighlight title="Mayor saldo pendiente" summary={cardWithHighestPending} />
           <CardHighlight title="Mayor porcentaje usado" summary={cardWithHighestUsage} showUsage />
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-[0.9fr_1.4fr]">
+        <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
           <CardCurrencySummary rows={visualSummaryRows} />
           <MainCardsTable summaries={mainCardSummaries} />
         </div>
@@ -386,7 +386,7 @@ export function DashboardSummary() {
           <h2 className="text-lg font-semibold text-slate-950">Cuentas</h2>
           <p className="text-sm text-slate-600">Saldos estimados por cuenta, separados por moneda.</p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Total en cuentas" value={<MoneyTotals totals={accountTotalsByCurrency} />} strong />
           <SummaryCard label="Cuentas activas" value={String(activeAccountSummaries.length)} />
         </div>
@@ -402,14 +402,14 @@ export function DashboardSummary() {
             Valores estimados con el precio actual registrado en cada activo. Los precios pueden ser manuales, de CoinGecko o de Alpha Vantage.
           </p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Valor total" value={<MoneyTotals totals={investmentsByCurrency} />} />
           <SummaryCard label="Plataformas" value={String(investmentPlatforms.length)} />
           <SummaryCard label="Activos" value={String(investmentAssets.length)} />
           <SummaryCard label="Holdings" value={String(holdings.length)} />
         </div>
         {investmentSummaries.length > 0 ? (
-          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
             <TopInvestmentsList title="Principales plataformas" rows={topInvestmentPlatforms} />
             <TopInvestmentsList title="Principales activos" rows={topInvestmentAssets} />
           </div>
@@ -423,7 +423,7 @@ export function DashboardSummary() {
           <h2 className="text-lg font-semibold text-slate-950">Presupuestos del mes</h2>
           <p className="text-sm text-slate-600">Resumen de presupuestos activos del mes actual, separado por moneda.</p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Presupuestado" value={<MoneyTotals totals={budgetedByCurrency} />} />
           <SummaryCard label="Gastado" value={<MoneyTotals totals={budgetSpentByCurrency} />} />
           <SummaryCard label="Excedidos" value={String(exceededBudgets.length)} />
@@ -437,7 +437,7 @@ export function DashboardSummary() {
           <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
           <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard label="Objetivo total" value={<MoneyTotals totals={goalTargetByCurrency} />} />
           <SummaryCard label="Avance actual" value={<MoneyTotals totals={goalCurrentByCurrency} />} />
           <SummaryCard label="Metas activas" value={String(activeGoalSummaries.length)} />
@@ -458,12 +458,12 @@ export function DashboardSummary() {
           </p>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
           <UpcomingCards title="Tarjetas proximas a corte" items={cardsNearCut} type="cut" />
           <UpcomingCards title="Tarjetas proximas a pago" items={cardsNearPayment} type="payment" />
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
           <RecentExpensesTable
             categories={categories}
             cards={cards}
@@ -472,7 +472,7 @@ export function DashboardSummary() {
           <RecentPaymentsTable cards={cards} payments={recentPayments} />
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
           <RecentAccountMovementsTable accounts={accounts} movements={recentAccountMovements} />
           <RecentTransfersTable accounts={accounts} transfers={recentAccountTransfers} />
         </div>
@@ -759,7 +759,7 @@ function CardCurrencySummary({
   }>;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Resumen por moneda</h3>
       <div className="mt-4 space-y-5">
         {rows.map((row) => (
@@ -779,21 +779,21 @@ function CardCurrencySummary({
 
 function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Tarjetas principales</h3>
       <div className="mt-3 space-y-3 md:hidden">
         {summaries.map((summary) => (
-          <article className="rounded-md bg-slate-50 p-3" key={summary.card.id}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
+          <article className="min-w-0 rounded-md bg-slate-50 p-3" key={summary.card.id}>
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="font-medium text-slate-950">{summary.card.name}</p>
                 <p className="text-xs text-slate-500">
                   {summary.card.bank} - **** {summary.card.last_four_digits} - {summary.card.currency}
                 </p>
               </div>
-              <p className="text-right text-sm font-semibold text-slate-950">{summary.usagePercent.toFixed(1)}%</p>
+              <p className="shrink-0 text-right text-sm font-semibold text-slate-950">{summary.usagePercent.toFixed(1)}%</p>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2">
               <MiniMetric label="Gastado" value={formatCurrency(summary.spent, summary.card.currency)} />
               <MiniMetric label="Pagado" value={formatCurrency(summary.paid, summary.card.currency)} />
               <MiniMetric label="Pendiente" value={formatCurrency(summary.pending, summary.card.currency)} />
@@ -804,7 +804,7 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
           </article>
         ))}
       </div>
-      <div className="mt-3 hidden overflow-x-auto md:block">
+      <div className="mt-3 hidden max-w-full overflow-x-auto md:block">
         <table className="w-full min-w-[860px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -848,9 +848,9 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="font-medium text-slate-900">{value}</p>
+      <p className="break-words font-medium text-slate-900">{value}</p>
     </div>
   );
 }
@@ -867,7 +867,7 @@ function NetWorthCard({
   };
 }) {
   return (
-    <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+    <article className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-4">
       <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
       <p className="mt-2 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
       <div className="mt-3 space-y-1 text-sm text-slate-600">
@@ -881,16 +881,16 @@ function NetWorthCard({
 
 function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; balance: number }> }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Cuentas con mayor saldo</h3>
       <div className="mt-3 space-y-3">
         {accounts.map(({ account, balance }) => (
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={account.id}>
-            <div>
+          <div className="flex min-w-0 flex-col gap-2 border-b border-slate-100 pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3" key={account.id}>
+            <div className="min-w-0">
               <p className="font-medium text-slate-900">{account.name}</p>
               <p className="text-sm text-slate-500">{account.institution || "Sin institucion"} - {account.currency}</p>
             </div>
-            <p className="text-right text-sm font-semibold text-slate-950">{formatCurrency(balance, account.currency)}</p>
+            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right">{formatCurrency(balance, account.currency)}</p>
           </div>
         ))}
       </div>
@@ -901,9 +901,9 @@ function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; bal
 
 function RecentAccountMovementsTable({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Ultimos movimientos</h3>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 max-w-full overflow-x-auto">
         <table className="w-full min-w-[520px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -935,9 +935,9 @@ function RecentAccountMovementsTable({ accounts, movements }: { accounts: Accoun
 
 function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; transfers: AccountTransfer[] }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Transferencias recientes</h3>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 max-w-full overflow-x-auto">
         <table className="w-full min-w-[520px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -974,11 +974,11 @@ function UpcomingGoals({
   }>;
 }) {
   return (
-    <div className="mt-4 rounded-md border border-slate-200 p-4">
+    <div className="mt-4 min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Proximas metas por fecha objetivo</h3>
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
+      <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
         {goals.map(({ goal, currentAmount, progressPercent }) => (
-          <div className="rounded-md bg-slate-50 p-3" key={goal.id}>
+          <div className="min-w-0 rounded-md bg-slate-50 p-3" key={goal.id}>
             <p className="font-medium text-slate-950">{goal.name}</p>
             <p className="text-sm text-slate-500">{goal.target_date ? formatDate(goal.target_date) : "Sin fecha"}</p>
             <p className="mt-2 text-sm text-slate-700">
@@ -1009,16 +1009,16 @@ function TopInvestmentsList({
   }>;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">{title}</h3>
       <div className="mt-3 space-y-3">
         {rows.map((row) => (
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 last:border-0 last:pb-0" key={row.keyId}>
-            <div>
+          <div className="flex min-w-0 flex-col gap-2 border-b border-slate-100 pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3" key={row.keyId}>
+            <div className="min-w-0">
               <p className="font-medium text-slate-900">{row.name}</p>
               <p className="text-sm text-slate-500">{row.detail}</p>
             </div>
-            <p className="text-right text-sm font-semibold text-slate-950">{formatCurrency(row.value, row.currency)}</p>
+            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right">{formatCurrency(row.value, row.currency)}</p>
           </div>
         ))}
       </div>
@@ -1043,12 +1043,12 @@ function DashboardBar({
   const width = Math.max((value / max) * 100, value > 0 ? 2 : 0);
 
   return (
-    <div>
-      <div className="flex items-center justify-between text-sm">
+    <div className="min-w-0">
+      <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
         <span className="text-slate-600">{label}</span>
-        <span className="font-medium text-slate-900">{formatCurrency(value, currency)}</span>
+        <span className="break-words font-medium text-slate-900">{formatCurrency(value, currency)}</span>
       </div>
-      <div className="mt-2 h-2 rounded-full bg-slate-100">
+      <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${width}%` }} />
       </div>
     </div>
@@ -1069,13 +1069,13 @@ function UpcomingCards({
   type: "cut" | "payment";
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
       <div className="mt-4 space-y-3">
         {items.map(({ card, daysToCut, daysToPayment }) => {
           const days = type === "cut" ? daysToCut : daysToPayment;
           return (
-            <div className="rounded-md border border-slate-200 p-3" key={card.id}>
+            <div className="min-w-0 rounded-md border border-slate-200 p-3" key={card.id}>
               <p className="font-medium text-slate-950">{card.name}</p>
               <p className="text-sm text-slate-500">
                 {card.bank} - **** {card.last_four_digits}
@@ -1106,9 +1106,9 @@ function RecentExpensesTable({
   categories: Category[];
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Gastos recientes</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -1143,9 +1143,9 @@ function RecentExpensesTable({
 
 function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: CreditCard[] }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Pagos recientes</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">

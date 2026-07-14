@@ -207,7 +207,7 @@ export function BudgetManager() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SummaryCard label="Total presupuestado" value={<MoneyTotals totals={totalBudgetedByCurrency} />} />
         <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
         <SummaryCard label="Restante" value={<MoneyTotals totals={remainingByCurrency} />} />
@@ -215,7 +215,7 @@ export function BudgetManager() {
         <SummaryCard label="Cerca del limite" value={String(nearLimitBudgets.length)} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <BudgetForm
           categories={categories}
           editingBudgetId={editingBudgetId}
@@ -312,8 +312,8 @@ function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onE
 
   return (
     <article className="rounded-lg border border-slate-200 p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
           <h3 className="font-semibold text-slate-950">{budget.name}</h3>
           <p className="text-sm text-slate-500">{categoryName} - {formatBudgetMonth(budget.month)}</p>
           {budget.description ? <p className="mt-2 text-sm text-slate-600">{budget.description}</p> : null}
@@ -323,7 +323,7 @@ function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onE
         </span>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-4">
         <Metric label="Limite" value={formatCurrency(Number(budget.amount), budget.currency)} />
         <Metric label="Gasto real" value={formatCurrency(spent, budget.currency)} />
         <Metric label="Restante" value={formatCurrency(remaining, budget.currency)} />

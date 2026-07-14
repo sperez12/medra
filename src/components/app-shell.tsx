@@ -10,11 +10,11 @@ type AppShellProps = {
 
 export function AppShell({ children, requireAuth = true }: AppShellProps) {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-hidden">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Link href="/" className="text-2xl font-bold tracking-tight text-slate-950">
+        <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-4 px-4 py-5">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link href="/" className="min-w-0 break-words text-2xl font-bold tracking-tight text-slate-950">
               Patrimonio Personal
             </Link>
             <AuthButton />
@@ -22,7 +22,7 @@ export function AppShell({ children, requireAuth = true }: AppShellProps) {
           <SiteNavigation />
         </div>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-8">
+      <main className="mx-auto max-w-7xl min-w-0 overflow-x-hidden px-4 py-8">
         {requireAuth ? <AuthGuard>{children}</AuthGuard> : children}
       </main>
     </div>

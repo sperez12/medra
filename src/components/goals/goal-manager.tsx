@@ -388,7 +388,7 @@ export function GoalManager() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SummaryCard label="Objetivo total" value={<MoneyTotals totals={targetByCurrency} />} />
         <SummaryCard label="Avance total" value={<MoneyTotals totals={currentByCurrency} />} />
         <SummaryCard label="Restante" value={<MoneyTotals totals={remainingByCurrency} />} />
@@ -402,7 +402,7 @@ export function GoalManager() {
         </p>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <GoalForm
           accounts={accounts}
           editingGoalId={editingGoalId}
@@ -425,7 +425,7 @@ export function GoalManager() {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <ContributionForm
           accounts={accounts}
           editingContributionId={editingContributionId}
@@ -569,8 +569,8 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
 
   return (
     <article className="rounded-lg border border-slate-200 p-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
           <h3 className="font-semibold text-slate-950">{goal.name}</h3>
           <p className="text-sm text-slate-500">{goalTypeLabels[goal.goal_type]} - {goal.currency}</p>
           <p className="mt-1 text-sm text-slate-500">Cuenta: {getAccountName(accounts, goal.account_id)}</p>
@@ -591,7 +591,7 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-5">
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-5">
         <Metric label="Objetivo" value={formatCurrency(Number(goal.target_amount), goal.currency)} />
         <Metric label="Actual" value={formatCurrency(currentAmount, goal.currency)} />
         <Metric label="Restante" value={formatCurrency(remaining, goal.currency)} />
@@ -631,7 +631,7 @@ function RecentContributions({
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Aportaciones recientes</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">

@@ -234,8 +234,8 @@ export function CardManager() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
-      <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={handleSubmit}>
+    <div className="grid max-w-full min-w-0 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
+      <form className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={handleSubmit}>
         <h2 className="text-lg font-semibold text-slate-950">
           {editingId ? "Editar tarjeta" : "Nueva tarjeta"}
         </h2>
@@ -290,7 +290,7 @@ export function CardManager() {
         <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
         <p className="text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {isLoading ? (
           <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-slate-600">
             Cargando tarjetas...
@@ -314,8 +314,8 @@ export function CardManager() {
           return (
             <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={card.id}>
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full" style={{ background: card.color ?? "#0d9488" }} />
                       <h3 className="text-lg font-semibold text-slate-950">{card.name}</h3>
@@ -330,7 +330,7 @@ export function CardManager() {
                   <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                   <Metric label="Gasto del periodo" value={formatCurrency(total, card.currency)} />
                   <Metric label="Pagos del periodo" value={formatCurrency(paid, card.currency)} />
                   <Metric label="Saldo pendiente estimado" value={formatCurrency(pending, card.currency)} strong />
@@ -354,7 +354,7 @@ export function CardManager() {
                   </p>
                 </div>
 
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2">
                   <StatusBox
                     label="Corte"
                     text={`${daysToCut} dia(s) restantes`}

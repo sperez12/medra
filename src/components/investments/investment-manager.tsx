@@ -484,18 +484,18 @@ export function InvestmentManager() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Valor total estimado" value={<MoneyTotals totals={totalByCurrency} />} />
         <SummaryCard label="Plataformas activas" value={String(platforms.filter((item) => item.is_active).length)} />
         <SummaryCard label="Activos activos" value={String(assets.filter((item) => item.is_active).length)} />
         <SummaryCard label="Holdings" value={String(holdings.length)} />
       </section>
 
-      <div className="flex flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
         <p>
           Los precios pueden ser manuales, venir de CoinGecko para cripto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente.
         </p>
-        <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[360px]">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:min-w-[360px]">
           <button
             className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300"
             disabled={Boolean(updatingPriceGroup || updatingAssetId)}
@@ -534,12 +534,12 @@ export function InvestmentManager() {
 
       {message ? <StatusMessage message={message} /> : null}
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
         <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={() => { setEditingPlatformId(null); setPlatformForm(emptyPlatformForm); }} />
         <AssetForm form={assetForm} editingId={editingAssetId} isSaving={isSavingAsset} onSubmit={saveAsset} onChange={setAssetForm} onCancel={() => { setEditingAssetId(null); setAssetForm(emptyAssetForm); }} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
         <HoldingForm assets={assets} platforms={platforms} form={holdingForm} editingId={editingHoldingId} onSubmit={saveHolding} onChange={setHoldingForm} onCancel={() => { setEditingHoldingId(null); setHoldingForm(emptyHoldingForm); }} />
         <TransactionForm
           assets={assets}
@@ -552,7 +552,7 @@ export function InvestmentManager() {
         />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-3">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-3">
         <SimpleList title="Valor por plataforma">
           {valueByPlatform.map((item) => (
             <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={formatCurrency(item.amount, item.currency)} />
@@ -580,7 +580,7 @@ export function InvestmentManager() {
         </SimpleList>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
         <HoldingsTable
           rows={holdingSummaries}
           onEdit={(holding) => startEditHolding(holding)}
@@ -1359,9 +1359,9 @@ function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; de
 
 function TableCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-      <div className="mt-4 overflow-x-auto">{children}</div>
+      <div className="mt-4 max-w-full overflow-x-auto">{children}</div>
     </div>
   );
 }

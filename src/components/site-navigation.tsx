@@ -22,7 +22,7 @@ export function SiteNavigation() {
   const pathname = usePathname();
 
   return (
-    <nav className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" aria-label="Navegacion principal">
+    <nav className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" aria-label="Navegacion principal">
       {sections.map((section) => (
         <Link
           className={`shrink-0 rounded-md border px-3 py-2 text-sm shadow-sm ${
