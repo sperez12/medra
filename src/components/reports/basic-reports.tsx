@@ -433,7 +433,7 @@ export function BasicReports() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
       <section>
         <h1 className="text-3xl font-bold text-slate-950">Reportes</h1>
         <p className="mt-2 text-slate-600">
@@ -452,7 +452,7 @@ export function BasicReports() {
           title="Resumen"
           description="Vista rapida del periodo seleccionado para gastos, pagos y tarjetas."
         />
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <SummaryCard label="Total gastado" value={<MoneyTotals totals={totalSpentByCurrency} />} />
           <SummaryCard label="Total pagado" value={<MoneyTotals totals={totalPaidByCurrency} />} />
           <SummaryCard label="Pendiente estimado" value={<MoneyTotals totals={pendingByCurrency} />} strong />
@@ -461,7 +461,7 @@ export function BasicReports() {
         </div>
       </section>
 
-      <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-5 shadow-sm" id="historial-patrimonio">
+      <section className="scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5" id="historial-patrimonio">
         <div className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold text-slate-950">Historial de patrimonio</h2>
           <p className="text-sm text-slate-600">
@@ -469,8 +469,8 @@ export function BasicReports() {
           </p>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {currentNetWorthRows.map((row) => (
               <NetWorthPreviewCard key={row.currency} row={row} />
             ))}
@@ -481,7 +481,7 @@ export function BasicReports() {
             ) : null}
           </div>
 
-          <div className="rounded-md border border-slate-200 p-4">
+          <div className="min-w-0 rounded-md border border-slate-200 p-4">
             <label className="text-sm font-medium text-slate-700" htmlFor="snapshot-notes">Notas opcionales</label>
             <textarea
               className="mt-2 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
@@ -501,21 +501,21 @@ export function BasicReports() {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-2">
           <SnapshotHistoryBars rows={snapshotHistoryRows} />
           <SnapshotsTable snapshots={snapshots.slice(0, 12)} onDelete={deleteSnapshot} />
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1fr_420px]">
-        <div className="scroll-mt-24" id="patrimonio-consolidado">
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="min-w-0 scroll-mt-24" id="patrimonio-consolidado">
           <ConsolidatedNetWorthSection
             baseCurrency={baseCurrency}
             onBaseCurrencyChange={setBaseCurrency}
             result={consolidatedNetWorth}
           />
         </div>
-        <div className="scroll-mt-24" id="tipos-cambio">
+        <div className="min-w-0 scroll-mt-24" id="tipos-cambio">
           <ExchangeRatesSection
             editingRateId={editingExchangeRateId}
             form={exchangeRateForm}
@@ -535,18 +535,18 @@ export function BasicReports() {
           title="Reportes de gastos y pagos"
           description="Detalle del periodo seleccionado. Estos reportes no usan tipos de cambio."
         />
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
           <BarReport title="Gasto por categoria" rows={expensesByCategory} emptyText="No hay gastos por categoria en este periodo." />
           <BarReport title="Gasto por tarjeta" rows={expensesByCard} emptyText="No hay gastos por tarjeta en este periodo." />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-2">
           <BarReport title="Pagos por tarjeta" rows={paymentsByCard} emptyText="No hay pagos por tarjeta en este periodo." />
           <ComparisonReport rows={comparisonByCard} />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">Promedio de gasto por dia</p>
             <div className="mt-2 text-3xl font-bold text-slate-950">
               <MoneyTotals totals={dailyAverageByCurrency} />
@@ -960,11 +960,11 @@ function ReportsInternalNavigation() {
   ];
 
   return (
-    <nav className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm" aria-label="Navegacion de reportes">
-      <div className="flex flex-wrap gap-2">
+    <nav className="max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-3 shadow-sm" aria-label="Navegacion de reportes">
+      <div className="flex min-w-0 flex-wrap gap-2">
         {links.map((link) => (
           <a
-            className="rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+            className="whitespace-nowrap rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-950"
             href={link.href}
             key={link.href}
           >
@@ -987,7 +987,7 @@ function SectionIntro({ title, description }: { title: string; description: stri
 
 function SummaryCard({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
       <p className={`mt-2 break-words text-xl ${strong ? "font-bold text-slate-950" : "font-semibold text-slate-800"}`}>
         {value}
@@ -998,7 +998,7 @@ function SummaryCard({ label, value, strong = false }: { label: string; value: R
 
 function NetWorthPreviewCard({ row }: { row: NetWorthSnapshotRow }) {
   return (
-    <article className="rounded-md border border-slate-200 bg-slate-50 p-4">
+    <article className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-semibold text-slate-700">Moneda</p>
         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{row.currency}</span>
@@ -1020,7 +1020,7 @@ function SnapshotHistoryBars({
   rows: SnapshotHistoryRow[];
 }) {
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Evolucion basica</h3>
       <div className="mt-4 space-y-5">
         {rows.map((row) => {
@@ -1029,9 +1029,9 @@ function SnapshotHistoryBars({
           const changeTone = row.absoluteChange >= 0 ? "text-emerald-700" : "text-red-700";
 
           return (
-            <div className="space-y-3" key={row.currency}>
-              <div className="flex flex-col gap-2 rounded-md bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+            <div className="min-w-0 space-y-3" key={row.currency}>
+              <div className="flex min-w-0 flex-col gap-2 rounded-md bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800">{row.currency}</p>
                   {hasEvolution ? (
                     <p className={`text-xs font-medium ${changeTone}`}>
@@ -1043,7 +1043,7 @@ function SnapshotHistoryBars({
                   )}
                 </div>
                 {row.lastSnapshot ? (
-                  <div className="text-sm sm:text-right">
+                  <div className="min-w-0 text-sm sm:text-right">
                     <p className="font-semibold text-slate-950">{formatCurrency(Number(row.lastSnapshot.net_worth), row.currency)}</p>
                     <p className="text-xs text-slate-500">Ultimo: {formatDate(row.lastSnapshot.snapshot_date)}</p>
                   </div>
@@ -1051,11 +1051,11 @@ function SnapshotHistoryBars({
               </div>
               {row.snapshots.map((snapshot) => (
                 <div key={snapshot.id}>
-                  <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                  <div className="flex min-w-0 flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                     <span>{formatDate(snapshot.snapshot_date)}</span>
-                    <span className="font-medium text-slate-900">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</span>
+                    <span className="break-words font-medium text-slate-900">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</span>
                   </div>
-                  <div className="mt-1 h-2 rounded-full bg-slate-100">
+                  <div className="mt-1 h-2 w-full max-w-full rounded-full bg-slate-100">
                     <div
                       className={`h-2 rounded-full ${Number(snapshot.net_worth) >= 0 ? "bg-blue-600" : "bg-red-500"}`}
                       style={{ width: `${Math.max((Math.abs(Number(snapshot.net_worth)) / max) * 100, 2)}%` }}
@@ -1077,7 +1077,7 @@ function SnapshotHistoryBars({
 function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]; onDelete: (snapshot: NetWorthSnapshot) => void }) {
   if (snapshots.length === 0) {
     return (
-      <div className="rounded-md border border-slate-200 p-4">
+      <div className="min-w-0 rounded-md border border-slate-200 p-4">
         <h3 className="font-semibold text-slate-950">Snapshots recientes</h3>
         <EmptyMessage text="Todavia no tienes snapshots de patrimonio. Guarda uno para empezar a ver tu evolucion." />
       </div>
@@ -1085,9 +1085,9 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
   }
 
   return (
-    <div className="rounded-md border border-slate-200 p-4">
+    <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Snapshots recientes</h3>
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -1137,9 +1137,9 @@ function ConsolidatedNetWorthSection({
   result: ConsolidatedNetWorthResult;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-semibold text-slate-950">Reporte patrimonial consolidado</h2>
           <p className="mt-1 text-sm text-slate-600">
             Conversion solo visual para reportes. Tus saldos originales no se modifican y solo se usan tasas directas.
@@ -1151,7 +1151,7 @@ function ConsolidatedNetWorthSection({
         </label>
       </div>
 
-      <div className="mt-5 rounded-md bg-slate-950 p-4 text-white">
+      <div className="mt-5 min-w-0 rounded-md bg-slate-950 p-4 text-white">
         <p className="text-sm text-slate-300">Total consolidado estimado en {result.baseCurrency}</p>
         <p className="mt-1 text-3xl font-bold">{formatCurrency(result.total, result.baseCurrency)}</p>
       </div>
@@ -1169,13 +1169,13 @@ function ConsolidatedNetWorthSection({
 
       <div className="mt-3 space-y-3">
         {result.rows.map((row) => (
-          <div className="rounded-md border border-slate-200 p-3" key={row.currency}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+          <div className="min-w-0 rounded-md border border-slate-200 p-3" key={row.currency}>
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
                 <p className="text-sm text-slate-600">Original: {formatCurrency(row.originalAmount, row.currency)}</p>
               </div>
-              <div className="text-sm sm:text-right">
+              <div className="min-w-0 text-sm sm:text-right">
                 {row.convertedAmount === null ? (
                   <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
                 ) : (
@@ -1205,7 +1205,7 @@ function ConsolidatedNetWorthSection({
           <EmptyMessage text="Aun no hay snapshots para comparar contra el patrimonio actual." />
         ) : (
           <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-3">
               <SummaryCard
                 label="Actual consolidado"
                 value={formatCurrency(result.total, result.baseCurrency)}
@@ -1236,15 +1236,15 @@ function ConsolidatedNetWorthSection({
 
             <div className="mt-4 space-y-3">
               {result.snapshotComparison.rows.map((row) => (
-                <div className="rounded-md bg-slate-50 p-3" key={row.currency}>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
+                <div className="min-w-0 rounded-md bg-slate-50 p-3" key={row.currency}>
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
                       <p className="text-sm text-slate-600">
                         Snapshot {row.sourceDate ? formatDate(row.sourceDate) : "sin fecha"}: {formatCurrency(row.originalAmount, row.currency)}
                       </p>
                     </div>
-                    <div className="text-sm sm:text-right">
+                    <div className="min-w-0 text-sm sm:text-right">
                       {row.convertedAmount === null ? (
                         <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
                       ) : (
@@ -1293,8 +1293,8 @@ function ExchangeRatesSection({
   const isEditing = Boolean(editingRateId);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-1">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex min-w-0 flex-col gap-1">
         <h2 className="text-xl font-semibold text-slate-950">Tipos de cambio manuales</h2>
         {isEditing ? (
           <p className="text-sm font-medium text-blue-700">Estas editando una tasa existente. Guarda cambios o cancela para crear una nueva.</p>
@@ -1312,7 +1312,7 @@ function ExchangeRatesSection({
             value={form.rate_date}
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium text-slate-700">
             Moneda origen
             <CurrencySelect value={form.from_currency} onChange={(value) => onChange({ ...form, from_currency: value })} />
@@ -1343,7 +1343,7 @@ function ExchangeRatesSection({
             value={form.notes}
           />
         </label>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
           <button
             className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             disabled={isSaving}
@@ -1369,9 +1369,9 @@ function ExchangeRatesSection({
         <h3 className="text-sm font-semibold text-slate-950">Tipos recientes</h3>
         <div className="mt-3 space-y-2">
           {rates.map((rate) => (
-            <div className="rounded-md border border-slate-200 p-3" key={rate.id}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+            <div className="min-w-0 rounded-md border border-slate-200 p-3" key={rate.id}>
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date)}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-950">
                     {`${rate.from_currency} -> ${rate.to_currency}`}
@@ -1379,7 +1379,7 @@ function ExchangeRatesSection({
                   <p className="text-sm text-slate-700">1 {rate.from_currency} = {formatExchangeRateValue(rate.rate)} {rate.to_currency}</p>
                   <p className="text-xs text-slate-500">{rate.notes ? rate.notes : "Sin notas"}</p>
                 </div>
-                <div className="flex gap-2 sm:justify-end">
+                <div className="flex min-w-0 gap-2 sm:justify-end">
                   <button className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200" onClick={() => onEdit(rate)} type="button">
                     Editar
                   </button>
@@ -1417,16 +1417,16 @@ function BarReport({ title, rows, emptyText }: { title: string; rows: ReportRow[
   const max = Math.max(...rows.map((row) => row.value), 1);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
       <div className="mt-4 space-y-4">
         {rows.map((row) => (
-          <div key={row.id}>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="truncate text-slate-700">{row.label}</span>
-              <span className="font-medium text-slate-950">{formatCurrency(row.value, row.currency)}</span>
+          <div className="min-w-0" key={row.id}>
+            <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <span className="min-w-0 truncate text-slate-700">{row.label}</span>
+              <span className="break-words font-medium text-slate-950">{formatCurrency(row.value, row.currency)}</span>
             </div>
-            <div className="mt-2 h-2 rounded-full bg-slate-100">
+            <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
               <div className="h-2 rounded-full bg-teal-600" style={{ width: `${Math.max((row.value / max) * 100, 2)}%` }} />
             </div>
           </div>
@@ -1441,11 +1441,11 @@ function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; c
   const max = Math.max(...rows.flatMap((row) => [row.spent, row.paid]), 1);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">Gasto vs pagos por tarjeta</h2>
       <div className="mt-4 space-y-5">
         {rows.map((row) => (
-          <div key={row.id}>
+          <div className="min-w-0" key={row.id}>
             <p className="text-sm font-medium text-slate-800">{row.label}</p>
             <ComparisonBar label="Gastado" value={row.spent} max={max} currency={row.currency} colorClass="bg-red-500" />
             <ComparisonBar label="Pagado" value={row.paid} max={max} currency={row.currency} colorClass="bg-teal-600" />
@@ -1459,12 +1459,12 @@ function ComparisonReport({ rows }: { rows: Array<{ id: string; label: string; c
 
 function ComparisonBar({ label, value, max, currency, colorClass }: { label: string; value: number; max: number; currency: string; colorClass: string }) {
   return (
-    <div className="mt-2">
-      <div className="flex items-center justify-between text-xs text-slate-500">
+    <div className="mt-2 min-w-0">
+      <div className="flex min-w-0 flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <span>{label}</span>
-        <span>{formatCurrency(value, currency)}</span>
+        <span className="break-words">{formatCurrency(value, currency)}</span>
       </div>
-      <div className="mt-1 h-2 rounded-full bg-slate-100">
+      <div className="mt-1 h-2 w-full rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${Math.max((value / max) * 100, value > 0 ? 2 : 0)}%` }} />
       </div>
     </div>
@@ -1481,9 +1481,9 @@ function HighestExpensesTable({
   categories: Category[];
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Gastos recientes más altos</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -1514,9 +1514,9 @@ function HighestExpensesTable({
 
 function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: CreditCard[] }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Pagos recientes</h2>
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
