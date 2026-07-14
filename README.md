@@ -48,8 +48,8 @@ http://localhost:3000
 Ejemplo:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=ey...
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
 Importante: nunca compartas el archivo `.env.local`.
