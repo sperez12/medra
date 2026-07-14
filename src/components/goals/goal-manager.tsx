@@ -387,7 +387,7 @@ export function GoalManager() {
   const recentContributions = contributions.slice(0, 8);
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
       <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
         <SummaryCard label="Objetivo total" value={<MoneyTotals totals={targetByCurrency} />} />
         <SummaryCard label="Avance total" value={<MoneyTotals totals={currentByCurrency} />} />
@@ -412,11 +412,11 @@ export function GoalManager() {
           onSubmit={handleGoalSubmit}
         />
 
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <h2 className="text-lg font-semibold text-slate-950">Metas registradas</h2>
           <p className="mt-1 text-sm text-slate-500">Cada meta muestra avance, restante y alertas de fecha por separado.</p>
           {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando metas...</p> : null}
-          <div className="mt-4 grid gap-4">
+          <div className="mt-4 grid min-w-0 gap-4">
             {goalSummaries.map((summary) => (
               <GoalCard accounts={accounts} key={summary.goal.id} onDelete={deleteGoal} onEdit={startEditGoal} summary={summary} />
             ))}
@@ -465,9 +465,9 @@ function GoalForm({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+    <form className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingGoalId ? "Editar meta" : "Nueva meta"}</h2>
-      <div className="mt-4 grid gap-4">
+      <div className="mt-4 grid min-w-0 gap-4">
         <TextInput label="Nombre de la meta" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
         <SelectInput label="Tipo de meta" value={form.goal_type} onChange={(value) => onChange({ ...form, goal_type: value as GoalType })}>
           {Object.entries(goalTypeLabels).map(([value, label]) => (
@@ -524,9 +524,9 @@ function ContributionForm({
     : accounts;
 
   return (
-    <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
+    <form className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingContributionId ? "Editar aportacion" : "Nueva aportacion"}</h2>
-      <div className="mt-4 grid gap-4">
+      <div className="mt-4 grid min-w-0 gap-4">
         <SelectInput
           label="Meta"
           value={form.goal_id}
@@ -568,11 +568,11 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
   const { goal, currentAmount, remaining, progressPercent, isCompleted, daysUntilTarget, isNearTargetDate, isOverdue } = summary;
 
   return (
-    <article className="rounded-lg border border-slate-200 p-4">
+    <article className="min-w-0 max-w-full rounded-lg border border-slate-200 p-4">
       <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
-          <h3 className="font-semibold text-slate-950">{goal.name}</h3>
-          <p className="text-sm text-slate-500">{goalTypeLabels[goal.goal_type]} - {goal.currency}</p>
+          <h3 className="break-words font-semibold text-slate-950">{goal.name}</h3>
+          <p className="break-words text-sm text-slate-500">{goalTypeLabels[goal.goal_type]} - {goal.currency}</p>
           <p className="mt-1 text-sm text-slate-500">Cuenta: {getAccountName(accounts, goal.account_id)}</p>
           {goal.target_date ? (
             <p className="text-sm text-slate-500">
@@ -581,7 +581,7 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
           ) : (
             <p className="text-sm text-slate-500">Sin fecha objetivo</p>
           )}
-          {goal.description ? <p className="mt-2 text-sm text-slate-600">{goal.description}</p> : null}
+          {goal.description ? <p className="mt-2 break-words text-sm text-slate-600">{goal.description}</p> : null}
         </div>
         <div className="flex flex-wrap gap-2 md:justify-end">
           <StatusChip tone={goal.is_active ? "green" : "slate"} text={goal.is_active ? "Activa" : "Inactiva"} />
@@ -599,11 +599,11 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
         <Metric label="Tiempo" value={daysUntilTarget === null ? "Sin fecha" : formatTargetDays(daysUntilTarget)} />
       </div>
 
-      <div className="mt-4 h-2 rounded-full bg-slate-100">
+      <div className="mt-4 h-2 w-full max-w-full rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${isCompleted ? "bg-teal-600" : "bg-blue-500"}`} style={{ width: `${Math.min(progressPercent, 100)}%` }} />
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => onEdit(goal)} type="button">
           Editar
         </button>
@@ -629,9 +629,9 @@ function RecentContributions({
   onEdit: (contribution: GoalContribution) => void;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-slate-950">Aportaciones recientes</h2>
-      <div className="mt-4 max-w-full overflow-x-auto">
+      <div className="mt-4 w-full max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -776,9 +776,9 @@ function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: num
   if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
 
   return (
-    <span className="space-y-1">
+    <span className="min-w-0 space-y-1">
       {totals.map((total) => (
-        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block break-words" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
       ))}
     </span>
   );
@@ -802,9 +802,9 @@ function TextInput({
   required?: boolean;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" min={min} onChange={(event) => onChange(event.target.value)} required={required} step={step} type={type} value={value} />
+      <input className="mt-1 w-full max-w-full rounded-md border border-slate-300 px-3 py-2 text-sm" min={min} onChange={(event) => onChange(event.target.value)} required={required} step={step} type={type} value={value} />
     </label>
   );
 }
@@ -823,9 +823,9 @@ function SelectInput({
   required?: boolean;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="text-sm font-medium text-slate-700">{label}</span>
-      <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange(event.target.value)} required={required} value={value}>
+      <select className="mt-1 w-full max-w-full rounded-md border border-slate-300 px-3 py-2 text-sm" onChange={(event) => onChange(event.target.value)} required={required} value={value}>
         {children}
       </select>
     </label>
@@ -845,18 +845,18 @@ function AccountSelect({ accounts, label, value, onChange }: { accounts: Account
 
 function SummaryCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+      <p className="mt-2 break-words text-2xl font-bold text-slate-950">{value}</p>
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-200 p-3">
+    <div className="min-w-0 rounded-md border border-slate-200 p-3">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="mt-1 font-semibold text-slate-950">{value}</p>
+      <p className="mt-1 break-words font-semibold text-slate-950">{value}</p>
     </div>
   );
 }
@@ -869,7 +869,7 @@ function StatusChip({ text, tone }: { text: string; tone: "green" | "amber" | "r
     slate: "border-slate-200 bg-slate-50 text-slate-600",
   };
 
-  return <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${styles[tone]}`}>{text}</span>;
+  return <span className={`w-fit max-w-full break-words rounded-full border px-3 py-1 text-xs font-medium ${styles[tone]}`}>{text}</span>;
 }
 
 function EmptyMessage({ text }: { text: string }) {
