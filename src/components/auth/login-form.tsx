@@ -1,21 +1,42 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    async function redirectIfAuthenticated() {
+      if (!supabase) {
+        setIsCheckingSession(false);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        router.replace("/");
+        return;
+      }
+
+      setIsCheckingSession(false);
+    }
+
+    redirectIfAuthenticated();
+  }, [router, supabase]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsLoading(true);
     setMessage("");
 
-    const supabase = createSupabaseBrowserClient();
     if (!supabase) {
       setIsLoading(false);
       setMessage("Falta configurar Supabase. Revisa el archivo .env.local y vuelve a intentar.");
@@ -36,6 +57,10 @@ export function LoginForm() {
         ? `No se pudo enviar el enlace: ${error.message}`
         : "Listo. Revisa tu correo y abre el enlace para entrar."
     );
+  }
+
+  if (isCheckingSession) {
+    return <p className="mt-6 rounded-xl bg-finance-mist p-3 text-sm text-finance-muted">Revisando tu sesion...</p>;
   }
 
   return (
