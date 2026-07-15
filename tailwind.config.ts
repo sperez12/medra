@@ -10,11 +10,20 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: "#f0fdf9",
-          100: "#ccfbef",
+          50: "#f0fdfa",
+          100: "#ccfbf1",
           500: "#14b8a6",
           600: "#0d9488",
-          900: "#134e4a"
+          700: "#0f766e",
+          900: "#134e4a",
+        },
+        finance: {
+          ink: "#0f172a",
+          muted: "#64748b",
+          surface: "#ffffff",
+          line: "#e2e8f0",
+          gold: "#b45309",
+          blue: "#2563eb",
         }
       }
     },

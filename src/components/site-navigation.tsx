@@ -24,10 +24,10 @@ export function SiteNavigation() {
     <nav className="-mx-1 flex max-w-full gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" aria-label="Navegacion principal">
       {sections.map((section) => (
         <Link
-          className={`shrink-0 rounded-md border px-3 py-2 text-sm shadow-sm ${
+          className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium shadow-sm transition ${
             isActivePath(pathname, section.href)
-              ? "border-teal-600 bg-teal-50 font-medium text-teal-700"
-              : "border-slate-200 bg-white text-slate-700 hover:border-teal-500 hover:text-teal-700"
+              ? "border-teal-600 bg-teal-600 text-white"
+              : "border-slate-200 bg-white/80 text-slate-700 hover:border-teal-500 hover:bg-white hover:text-teal-700"
           }`}
           href={section.href}
           key={section.href}
