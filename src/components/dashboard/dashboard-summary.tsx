@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BrandMark } from "@/components/brand/brand-mark";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { BRAND } from "@/lib/brand";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -319,14 +321,35 @@ export function DashboardSummary() {
 
   return (
     <div className="max-w-full space-y-6 overflow-x-hidden">
-      <section>
-        <h1 className="text-3xl font-bold text-slate-950">Dashboard</h1>
-        <p className="mt-2 text-slate-600">
-          Resumen global de tus tarjetas, cuentas, gastos y pagos. Vista actual: {getPeriodLabel(periodFilter)}.
-        </p>
-        <p className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800">
-          Los totales se muestran por moneda. Todavia no hay conversion automatica entre monedas.
-        </p>
+      <section className="relative overflow-hidden rounded-3xl border border-brand-900/10 bg-brand-900 p-5 text-white shadow-sm sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-brand-200/20 blur-3xl" />
+        <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-end">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3">
+              <BrandMark className="h-12 w-12 shrink-0" variant="dark" />
+              <div>
+                <p className="text-sm font-medium text-brand-200">{BRAND.slogan}</p>
+                <h1 className="pp-display mt-1 text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>
+              </div>
+            </div>
+            <p className="mt-5 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">
+              Vista general de tarjetas, cuentas, inversiones, presupuestos y metas. Periodo actual: {getPeriodLabel(periodFilter)}.
+            </p>
+            <p className="mt-4 inline-flex max-w-full rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-medium text-brand-100">
+              Los totales se muestran por moneda. No hay conversion automatica entre monedas.
+            </p>
+          </div>
+          <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Senales clave</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <HeroMetric label="Tarjetas" value={cards.length} />
+              <HeroMetric label="Cuentas" value={activeAccountSummaries.length} />
+              <HeroMetric label="Metas" value={activeGoalSummaries.length} />
+              <HeroMetric label="Alertas pago" value={cardsNearPayment.length} />
+            </div>
+          </div>
+        </div>
       </section>
 
       <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
@@ -340,9 +363,9 @@ export function DashboardSummary() {
         <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold text-slate-950">Patrimonio neto estimado</h2>
+          <h2 className="pp-display text-3xl">Patrimonio neto estimado</h2>
           <p className="text-sm text-slate-600">
             Cuentas mas inversiones, menos saldo pendiente de tarjetas. No hay conversion automatica entre monedas. Cada moneda se muestra por separado.
           </p>
@@ -355,9 +378,9 @@ export function DashboardSummary() {
         {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas, inversiones ni saldos de tarjeta para calcular patrimonio." /> : null}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold text-slate-950">Resumen de tarjetas</h2>
+          <h2 className="pp-display text-3xl">Resumen de tarjetas</h2>
           <p className="text-sm text-slate-600">
             Vista rapida del periodo seleccionado, separada por moneda y sin mezclar saldos.
           </p>
@@ -381,7 +404,7 @@ export function DashboardSummary() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Cuentas</h2>
           <p className="text-sm text-slate-600">Saldos estimados por cuenta, separados por moneda.</p>
@@ -395,7 +418,7 @@ export function DashboardSummary() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Inversiones</h2>
           <p className="text-sm text-slate-600">
@@ -418,7 +441,7 @@ export function DashboardSummary() {
         )}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Presupuestos del mes</h2>
           <p className="text-sm text-slate-600">Resumen de presupuestos activos del mes actual, separado por moneda.</p>
@@ -432,7 +455,7 @@ export function DashboardSummary() {
         {currentBudgetSummaries.length === 0 ? <EmptyTableMessage text="Aun no hay presupuestos activos para el mes actual." /> : null}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Metas</h2>
           <p className="text-sm text-slate-600">Progreso de metas activas, separado por moneda.</p>
@@ -450,7 +473,7 @@ export function DashboardSummary() {
         )}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-semibold text-slate-950">Actividad reciente</h2>
           <p className="text-sm text-slate-600">
@@ -690,11 +713,20 @@ function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: num
   );
 }
 
+function HeroMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3">
+      <p className="text-xs text-white/70">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
 function SummaryCard({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl ${strong ? "font-bold text-slate-950" : "font-semibold text-slate-800"}`}>
+    <div className="pp-metric-card min-w-0">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-finance-muted">{label}</p>
+      <p className={`mt-3 break-words text-2xl ${strong ? "font-bold text-finance-ink" : "font-semibold text-slate-800"}`}>
         {value}
       </p>
     </div>
@@ -703,9 +735,9 @@ function SummaryCard({ label, value, strong = false }: { label: string; value: R
 
 function SmallStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
+    <div className="pp-metric-card min-w-0 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-finance-muted">{label}</p>
+      <p className="mt-2 text-3xl font-semibold text-finance-ink">{value}</p>
     </div>
   );
 }
@@ -721,7 +753,7 @@ function CardHighlight({
 }) {
   if (!summary || (summary.pending === 0 && summary.usagePercent === 0)) {
     return (
-      <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+      <div className="rounded-2xl border border-finance-line bg-finance-mist p-4">
         <p className="text-sm font-semibold text-slate-700">{title}</p>
         <p className="mt-2 text-sm text-slate-500">Aun no hay saldo pendiente en tarjetas.</p>
       </div>
@@ -729,7 +761,7 @@ function CardHighlight({
   }
 
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+    <div className="rounded-2xl border border-finance-line bg-finance-mist p-4">
       <p className="text-sm font-semibold text-slate-700">{title}</p>
       <div className="mt-2 flex flex-col gap-1">
         <p className="font-semibold text-slate-950">{summary.card.name}</p>
@@ -867,10 +899,10 @@ function NetWorthCard({
   };
 }) {
   return (
-    <article className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <p className="text-sm font-semibold text-slate-700">{row.currency}</p>
-      <p className="mt-2 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
-      <div className="mt-3 space-y-1 text-sm text-slate-600">
+    <article className="min-w-0 rounded-2xl border border-brand-900/10 bg-gradient-to-br from-brand-900 to-brand-700 p-5 text-white shadow-sm">
+      <p className="pp-badge border-white/10 bg-white/10 text-brand-100">{row.currency}</p>
+      <p className="mt-4 break-words text-3xl font-semibold text-white">{formatCurrency(row.netWorth, row.currency)}</p>
+      <div className="mt-4 space-y-1 text-sm text-white/75">
         <p>Cuentas: {formatCurrency(row.accounts, row.currency)}</p>
         <p>Inversiones: {formatCurrency(row.investments, row.currency)}</p>
         <p>Deuda tarjetas: {formatCurrency(row.pendingCards, row.currency)}</p>

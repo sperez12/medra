@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { AuthButton } from "@/components/auth/auth-button";
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { BrandMark } from "@/components/brand/brand-mark";
 import { SiteNavigation } from "@/components/site-navigation";
+import { BRAND } from "@/lib/brand";
 
 type AppShellProps = {
   children: React.ReactNode;
@@ -11,16 +13,20 @@ type AppShellProps = {
 export function AppShell({ children, requireAuth = true }: AppShellProps) {
   return (
     <div className="min-h-screen overflow-x-hidden">
-      <header className="border-b border-slate-200/80 bg-white/90 shadow-sm backdrop-blur">
+      <header className="border-b border-finance-line/80 bg-white/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <Link href="/" className="min-w-0 break-words text-2xl font-bold tracking-tight text-slate-950">
-                Patrimonio Personal
-              </Link>
-              <p className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                Finanzas personales
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <BrandMark className="h-11 w-11 shrink-0" />
+              <div className="min-w-0">
+                <Link href="/" className="pp-display min-w-0 break-words text-3xl leading-none">
+                  {BRAND.visibleName}
+                </Link>
+                <p className="mt-1 text-xs font-medium text-brand-700">
+                  {BRAND.slogan}
+                </p>
+                <p className="sr-only">{BRAND.technicalName}</p>
+              </div>
             </div>
             <AuthButton />
           </div>

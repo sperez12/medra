@@ -43,7 +43,7 @@ export function AuthButton() {
     return (
       <Link
         href="/login"
-        className="w-fit rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+        className="pp-button-primary w-fit"
       >
         Iniciar sesion
       </Link>
@@ -54,7 +54,7 @@ export function AuthButton() {
     <div className="flex flex-col gap-2 sm:items-end">
       <span className="text-sm text-slate-600">{email}</span>
       <button
-        className="w-fit rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:border-teal-500 hover:text-teal-700"
+        className="pp-button-secondary w-fit"
         onClick={handleLogout}
         type="button"
       >

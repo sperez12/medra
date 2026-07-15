@@ -43,7 +43,7 @@ export function LoginForm() {
       <label className="block">
         <span className="text-sm font-medium text-slate-700">Correo</span>
         <input
-          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+          className="pp-input mt-1"
           onChange={(event) => setEmail(event.target.value)}
           placeholder="tu-correo@ejemplo.com"
           required
@@ -52,7 +52,7 @@ export function LoginForm() {
         />
       </label>
       <button
-        className="w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        className="pp-button-primary w-full"
         disabled={isLoading}
         type="submit"
       >

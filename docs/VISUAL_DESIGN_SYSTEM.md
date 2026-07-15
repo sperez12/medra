@@ -1,247 +1,298 @@
-# Sistema visual de Patrimonio Personal
+# Sistema visual de Medra para Patrimonio Personal
 
-Este documento define la base visual de la app antes de redisenar pantallas especificas. La intencion es mantener una experiencia financiera seria, clara y confiable, sin hacerla fria ni complicada.
+Este documento define la identidad visual que se aplicara a la app. La referencia principal es la marca visible **Medra**, pero el nombre tecnico del proyecto se mantiene como **Patrimonio Personal**.
+
+La app debe sentirse premium, limpia, confiable y financiera, con una estetica calmada. La direccion toma inspiracion de la referencia de Medra sin copiarla literalmente.
+
+## Capas de marca
+
+- Simbolo grafico / monograma: una `M` abstracta construida con SVG simple en codigo.
+- Nombre visible: `Medra`.
+- Eslogan: `Tu patrimonio, en crecimiento.`
+- Nombre tecnico del proyecto: `Patrimonio Personal`.
+- Dominio y URLs: neutrales durante desarrollo.
+
+El usuario final puede ver `Medra` como marca de producto. El codigo, repositorio, variables y documentacion tecnica pueden seguir usando `Patrimonio Personal` cuando sea necesario.
 
 ## Direccion visual general
 
-Patrimonio Personal debe sentirse como una app financiera personal premium:
+- Premium, sobria y confiable.
+- Fondo claro tipo marfil.
+- Superficies blancas.
+- Bordes suaves.
+- Sombras sutiles.
+- Acento verde petroleo.
+- Menta y verde medio como apoyo.
+- Beige calido como acento complementario.
+- Numeros grandes y legibles.
+- Navegacion clara en movil y escritorio.
+- Evitar estilo recargado, infantil o "crypto casino".
 
-- Sobria y moderna.
-- Limpia en movil y escritorio.
-- Orientada a numeros, tarjetas y jerarquia clara.
-- Con fondos neutros y superficies blancas.
-- Con acentos discretos en verde, azul y dorado.
-- Sin exceso de color, brillos o estilo de casino crypto.
+## Paleta base
 
-La interfaz debe ayudar a responder rapido:
+- Primario oscuro: `#0D1B2A`
+- Verde petroleo: `#1F7A6E`
+- Menta: `#A7D5C9`
+- Marfil calido: `#F2EDE3`
+- Neutro claro: `#F5F6F7`
+- Neutro oscuro: `#68717A`
 
-- Cuanto tengo.
-- Cuanto debo.
-- Que cambio.
-- Que requiere atencion.
-
-## Paleta recomendada
+## Uso de colores por intencion
 
 ### Fondo
 
-- Principal: `slate-50` / `#f8fafc`
-- Fondo suave alterno: `#f1f5f9`
-- Se permite un gradiente muy sutil para dar profundidad, nunca decorativo en exceso.
+- Base: `#F2EDE3`
+- Fondo claro de app: `#F5F6F7`
+- Gradientes sutiles con menta y marfil, nunca saturados.
 
-### Superficie y tarjetas
+### Superficie / tarjetas
 
-- Tarjeta principal: `white`
-- Tarjeta secundaria: `slate-50`
-- Borde: `slate-200`
-- Sombra: `shadow-sm`
+- Principal: blanco.
+- Secundaria: `#F5F6F7`.
+- Profunda / hero: `#0D1B2A`.
+- Borde suave: beige grisaceo o slate muy claro.
 
 ### Texto
 
-- Texto principal: `slate-950`
-- Texto normal: `slate-800`
-- Texto secundario: `slate-600`
-- Texto auxiliar: `slate-500`
+- Principal: `#0D1B2A`.
+- Secundario: `#68717A`.
+- Sobre fondos oscuros: blanco con opacidad controlada.
 
-### Acentos por intencion
+### Acento positivo
 
-- Positivo / progreso: `teal-600` o `emerald-600`
-- Informacion: `blue-600`
-- Advertencia: `amber-600` / `amber-700`
-- Error / destructivo: `red-600` / `red-700`
-- Premium discreto: `amber-700` o dorado suave, solo en detalles.
+- `#1F7A6E`.
+- Usar para progreso, acciones principales y estados positivos.
 
-## Uso de colores
+### Advertencia
 
-- El color no debe ser el unico indicador. Siempre acompanar con texto claro.
-- Verde/teal significa progreso, exito o dato positivo.
-- Azul significa informacion o dato financiero neutro.
-- Ambar significa atencion o cercania a limite.
-- Rojo significa error, vencido, borrar o riesgo.
-- Evitar fondos saturados para bloques completos. Preferir bordes, chips, barras o lineas laterales.
+- Ambar/dorado suave.
+- Usar para proximidad a limites o atencion.
+
+### Error
+
+- Rojo suave para fondos.
+- Rojo mas fuerte para texto destructivo.
+
+### Informacion
+
+- Azul sobrio o verde petroleo cuando sea informacion financiera neutra.
+
+## Tipografia
+
+### Titulos
+
+Preferencia: `DM Serif Display`.
+
+Como no se instalan dependencias ni se carga una fuente externa en esta fase, el fallback configurado es:
+
+```text
+DM Serif Display, Georgia, Cambria, Times New Roman, serif
+```
+
+Uso:
+
+- Marca visible `Medra`.
+- Titulos principales.
+- Secciones de alto nivel como patrimonio y dashboard.
+
+### Texto y UI
+
+Preferencia: `Inter`.
+
+Fallback configurado:
+
+```text
+Inter, Arial, Helvetica, sans-serif
+```
+
+Uso:
+
+- Formularios.
+- Tablas.
+- Navegacion.
+- Labels.
+- Numeros y texto cotidiano.
+
+## Monograma
+
+El monograma debe:
+
+- Sugerir una `M` abstracta.
+- Combinar azul profundo, verde petroleo y menta.
+- Usar formas suaves y superpuestas.
+- Funcionar en header, login, Dashboard y favicon futuro.
+- Estar hecho con SVG/CSS simple, sin imagen externa.
+
+Implementacion actual:
+
+- `src/components/brand/brand-mark.tsx`
+
+Configuracion de marca:
+
+- `src/lib/brand.ts`
 
 ## Tarjetas
 
 Estilo base:
 
-- `rounded-lg`
-- `border border-slate-200`
-- `bg-white`
-- `shadow-sm`
-- Padding: `p-4` en movil, `p-5` o `p-6` en escritorio.
+- Radio amplio pero sobrio: `rounded-2xl`.
+- Fondo blanco.
+- Borde suave.
+- Sombra ligera.
+- Padding generoso.
 
-Reglas:
-
-- No anidar tarjetas visualmente pesadas dentro de tarjetas.
-- Usar tarjetas para metricas, formularios, tablas y estados vacios.
-- Las metricas importantes deben tener numero grande y etiqueta pequena.
-- Los bloques secundarios pueden usar `bg-slate-50`.
-
-Clases base preparadas:
+Clases base:
 
 - `.pp-card`
 - `.pp-card-muted`
+- `.pp-card-deep`
+- `.pp-metric-card`
+
+Reglas:
+
+- Las tarjetas de resumen deben respirar.
+- Las metricas principales deben tener numeros grandes.
+- No saturar con muchos colores al mismo nivel.
+- En movil, una tarjeta por fila si el contenido es denso.
 
 ## Botones
 
 ### Primario
 
-Uso: guardar, crear, actualizar, accion principal.
+- Verde petroleo.
+- Texto blanco.
+- Forma tipo pill.
+- Peso semibold.
 
-- Fondo `teal-600`
-- Texto blanco
-- Hover `teal-700`
-- Borde suave o sin borde
-- Focus visible claro
-
-Clase base preparada:
+Clase:
 
 - `.pp-button-primary`
 
 ### Secundario
 
-Uso: cancelar, editar, acciones neutrales.
+- Fondo blanco.
+- Borde verde suave.
+- Texto verde/oscuro.
 
-- Fondo blanco
-- Borde `slate-300`
-- Texto `slate-700`
-- Hover con acento teal discreto
-
-Clase base preparada:
+Clase:
 
 - `.pp-button-secondary`
 
 ### Destructivo
 
-Uso: borrar o acciones irreversibles.
-
-- Texto `red-700`
-- Borde o fondo `red-50`
-- Siempre pedir confirmacion cuando borre datos.
+- Mantener rojo.
+- Debe verse diferente de acciones neutrales.
+- Siempre con confirmacion para borrado.
 
 ## Inputs y selects
 
-Estilo base:
-
-- `rounded-md`
-- `border border-slate-300`
-- `bg-white`
-- Texto claro y legible
-- Focus con `teal-500` y anillo suave
-
-Clase base preparada:
+Clase base:
 
 - `.pp-input`
+
+Estilo:
+
+- Radio suave.
+- Borde claro.
+- Focus verde petroleo.
+- Sombra sutil.
 
 Reglas:
 
 - Labels claros.
-- Placeholder util, no como sustituto del label.
-- En movil, inputs y botones deben ocupar ancho completo cuando ayude.
-- Mensajes de error debajo o encima del formulario, sin lenguaje tecnico.
+- Placeholders utiles.
+- En movil, ancho completo.
+- Mensajes de error humanos, no tecnicos.
+
+## Badges y chips
+
+Clase base:
+
+- `.pp-badge`
+
+Uso:
+
+- Moneda.
+- Estado.
+- Fuente de precio.
+- Urgencia.
+
+No usar badges con colores demasiado fuertes salvo errores o advertencias.
 
 ## Tablas
 
-Estilo:
-
-- Encabezados en `slate-500`.
-- Filas con divisores `slate-100`.
-- Montos alineados a la derecha cuando sea tabla financiera.
-- En movil, tabla dentro de `overflow-x-auto`.
-- La pagina completa no debe generar scroll horizontal.
-
-Reglas:
-
-- Las tablas son buenas para historial y movimientos.
-- Las tarjetas son mejores para resumen y acciones principales.
-- Si una tabla es ancha, debe tener scroll interno.
+- Mantener tablas limpias.
+- Encabezados en texto secundario.
+- Filas con divisores suaves.
+- Montos alineados a la derecha.
+- Scroll horizontal interno en movil.
+- La pagina completa nunca debe generar scroll horizontal.
 
 ## Navegacion
 
-La navegacion principal usa pills compactas:
+La navegacion principal usa pills:
 
-- Activa: fondo teal, texto blanco.
-- Inactiva: fondo blanco, borde slate, hover teal.
-- En movil: scroll horizontal interno.
-- En escritorio: puede envolver en varias lineas.
+- Activa: verde petroleo, texto blanco.
+- Inactiva: blanco translucid, borde suave.
+- Movil: scroll horizontal interno.
+- Escritorio: puede envolver.
 
-La marca debe mantenerse simple:
+Header:
 
-- Nombre: `Patrimonio Personal`.
-- Subtitulo discreto: `Finanzas personales`.
+- Monograma.
+- Marca visible `Medra`.
+- Eslogan.
+- Nombre tecnico solo como referencia accesible/documental.
 
 ## Metricas financieras
 
 Reglas:
 
-- Numeros importantes grandes y con buen contraste.
+- Numeros grandes y claros.
 - Siempre mostrar moneda.
-- No mezclar monedas distintas en una sola cifra.
-- Usar separadores de miles y decimales consistentes.
-- Evitar bloques con demasiados numeros del mismo peso visual.
+- No mezclar monedas.
+- Usar tarjetas profundas solo para informacion protagonista.
+- Usar barras sutiles para comparacion, no graficas recargadas.
 
-Jerarquia recomendada:
+## Dashboard
 
-1. Total principal o patrimonio.
-2. Desglose por moneda.
-3. Indicadores de deuda, disponible o avance.
-4. Listas recientes y detalles.
+El Dashboard es la primera pantalla redisenada con la identidad Medra.
 
-## Estados vacios
+Debe tener:
 
-Un estado vacio debe:
+- Hero oscuro premium.
+- Monograma visible.
+- Titulo editorial con tipografia serif.
+- Senales clave compactas.
+- Patrimonio neto como bloque protagonista.
+- Tarjetas limpias y espaciadas.
+- Actividad reciente sin perder legibilidad.
 
-- Explicar que falta.
-- Indicar el siguiente paso.
-- No sonar tecnico.
-- Usar tarjeta simple con borde suave.
+## Movil
 
-Ejemplo:
-
-> Todavia no tienes cuentas. Crea una cuenta para empezar a calcular tu patrimonio.
-
-## Mensajes de exito y error
-
-- Exito: borde/fondo verde o teal suave.
-- Error: rojo suave, mensaje claro y accion sugerida.
-- Informacion: azul o slate.
-- Advertencia: ambar.
-
-Evitar mensajes como "error 23505" para usuarios finales. Si se necesita el detalle tecnico, dejarlo en consola o documentacion, no como mensaje principal.
-
-## Reglas para movil
-
-- Usar `grid-cols-1` por defecto.
-- Usar `md:grid-cols-2` o `lg:grid-cols-3` solo en pantallas mayores.
-- Usar `min-w-0` en grids y flex containers.
-- Usar `max-w-full` en tarjetas, tablas, formularios y badges.
-- Tablas anchas deben tener scroll interno.
-- Botones principales pueden ocupar ancho completo.
-- Evitar filas de botones apretadas; usar `flex-col sm:flex-row`.
+- Mantener `min-w-0` en grids/flex.
+- Evitar anchos fijos.
+- Tablas con `overflow-x-auto`.
+- Botones pueden ocupar ancho completo cuando ayude.
+- Hero debe apilar contenido.
+- Monograma y textos deben poder reducirse sin desbordar.
 
 ## Modo claro/oscuro
 
-Actualmente la app usa modo claro.
+Actualmente la app sigue en modo claro.
 
-La direccion visual permite acentos oscuros tipo slate, pero no se debe activar modo oscuro completo hasta disenar y probar:
+Se permite usar bloques oscuros puntuales, como el hero del Dashboard, pero no activar modo oscuro completo hasta probar:
 
-- Contraste de tablas.
-- Estados de error/exito.
+- Tablas.
 - Inputs.
-- Graficas/barras.
-- Legibilidad en movil.
+- Reportes.
+- Estados de error.
+- Contraste movil.
 
-Por ahora:
+## Reglas para futuras fases
 
-- Mantener `color-scheme: light`.
-- Usar fondos slate claros.
-- Usar textos oscuros.
-- Usar acentos sobrios.
-
-## Reglas para futuras pantallas
-
-- No introducir paletas nuevas por modulo.
-- Reutilizar tokens de color e intencion.
-- Mantener tarjetas limpias y no saturar el Dashboard.
-- Priorizar legibilidad de numeros sobre decoracion.
-- Toda nueva tabla debe probarse en movil.
-- Toda accion destructiva debe distinguirse visualmente.
+- Redisenar una pantalla por fase.
+- No tocar calculos financieros al redisenar UI.
+- Mantener responsive antes de hacer commit.
+- No introducir librerias visuales nuevas sin una razon clara.
+- Mantener la separacion entre marca visible y nombre tecnico.

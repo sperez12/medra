@@ -26,8 +26,8 @@ export function SiteNavigation() {
         <Link
           className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium shadow-sm transition ${
             isActivePath(pathname, section.href)
-              ? "border-teal-600 bg-teal-600 text-white"
-              : "border-slate-200 bg-white/80 text-slate-700 hover:border-teal-500 hover:bg-white hover:text-teal-700"
+              ? "border-brand-500 bg-brand-500 text-white"
+              : "border-finance-line bg-white/80 text-finance-muted hover:border-brand-500 hover:bg-white hover:text-brand-700"
           }`}
           href={section.href}
           key={section.href}
