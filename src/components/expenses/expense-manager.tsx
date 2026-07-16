@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import {
   getDefaultPeriodFilter,
   getPeriodLabel,
@@ -436,7 +437,7 @@ export function ExpenseManager() {
                   <td className="py-3 pr-4 text-slate-700">{getCategoryName(expense.category_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
                   <td className="py-3 text-right font-semibold text-slate-950">
-                    {formatCurrency(Number(expense.amount), getCardCurrency(expense.credit_card_id))}
+                    <MoneyAmount amount={Number(expense.amount)} currency={getCardCurrency(expense.credit_card_id)} />
                   </td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">

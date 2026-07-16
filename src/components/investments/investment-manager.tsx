@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { MoneyAmount } from "@/components/ui/money-amount";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type {
   Holding,
@@ -555,13 +556,13 @@ export function InvestmentManager() {
       <section className="grid min-w-0 gap-6 xl:grid-cols-3">
         <SimpleList title="Valor por plataforma">
           {valueByPlatform.map((item) => (
-            <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={formatCurrency(item.amount, item.currency)} />
+            <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
           ))}
           {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea holdings para ver este resumen." /> : null}
         </SimpleList>
         <SimpleList title="Valor por tipo de activo">
           {valueByAssetType.map((item) => (
-            <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={formatCurrency(item.amount, item.currency)} />
+            <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
           ))}
           {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
         </SimpleList>
@@ -899,13 +900,13 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
               <td className="py-3 pr-4">{platform?.name ?? "Plataforma no encontrada"}</td>
               <td className="py-3 pr-4">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
               <td className="py-3 pr-4">{Number(holding.quantity).toLocaleString("es-MX")}</td>
-              <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : formatCurrency(Number(holding.average_cost), asset?.currency)}</td>
-              <td className="py-3 pr-4">{formatCurrency(Number(asset?.current_price ?? 0), asset?.currency)}</td>
+              <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : <MoneyAmount amount={Number(holding.average_cost)} currency={asset?.currency} />}</td>
+              <td className="py-3 pr-4"><MoneyAmount amount={Number(asset?.current_price ?? 0)} currency={asset?.currency} /></td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
               <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset?.last_price_error} /></td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
-              <td className="py-3 text-right font-semibold">{formatCurrency(value, asset?.currency)}</td>
+              <td className="py-3 text-right font-semibold"><MoneyAmount amount={value} currency={asset?.currency} /></td>
               <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(holding)} onDelete={() => onDelete(holding)} /></td>
             </tr>
           ))}
@@ -941,7 +942,7 @@ function AssetsTable({
               <td className="py-3 pr-4 font-semibold">{asset.symbol}</td>
               <td className="py-3 pr-4">{asset.name}</td>
               <td className="py-3 pr-4">{assetTypeLabels[asset.asset_type]}</td>
-              <td className="py-3 pr-4">{formatCurrency(Number(asset.current_price), asset.currency)}</td>
+              <td className="py-3 pr-4"><MoneyAmount amount={Number(asset.current_price)} currency={asset.currency} /></td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
               <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset.last_price_error} /></td>
@@ -991,7 +992,7 @@ function TransactionsTable({ assets, platforms, transactions, onEdit, onDelete }
                 <td className="py-3 pr-4">{asset?.symbol ?? "Activo no encontrado"}</td>
                 <td className="py-3 pr-4">{transactionTypeLabels[transaction.transaction_type]}</td>
                 <td className="py-3 pr-4">{Number(transaction.quantity).toLocaleString("es-MX")}</td>
-                <td className="py-3 text-right font-semibold">{formatCurrency(Number(transaction.total_amount), asset?.currency)}</td>
+                <td className="py-3 text-right font-semibold"><MoneyAmount amount={Number(transaction.total_amount)} currency={asset?.currency} /></td>
                 <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(transaction)} onDelete={() => onDelete(transaction)} /></td>
               </tr>
             );
@@ -1320,8 +1321,8 @@ function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
-  return <span className="space-y-1">{totals.map((total) => <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
+  return <span className="space-y-1">{totals.map((total) => <span className="block" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>)}</span>;
 }
 
 function SummaryCard({ label, value }: { label: string; value: React.ReactNode }) {
@@ -1342,7 +1343,7 @@ function SimpleList({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; detail: string; value: string; onEdit?: () => void; onDelete?: () => void }) {
+function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; detail: string; value: React.ReactNode; onEdit?: () => void; onDelete?: () => void }) {
   return (
     <div className="border-b border-slate-100 pb-3 last:border-0 last:pb-0">
       <div className="flex items-start justify-between gap-3">

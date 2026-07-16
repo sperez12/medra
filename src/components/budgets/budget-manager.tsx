@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import { dedupeCategories, findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
-import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Budget, Category, CreditCard, Expense } from "@/types/finance";
 
@@ -324,9 +325,9 @@ function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onE
       </div>
 
       <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-4">
-        <Metric label="Limite" value={formatCurrency(Number(budget.amount), budget.currency)} />
-        <Metric label="Gasto real" value={formatCurrency(spent, budget.currency)} />
-        <Metric label="Restante" value={formatCurrency(remaining, budget.currency)} />
+        <Metric label="Limite" value={<MoneyAmount amount={Number(budget.amount)} currency={budget.currency} />} />
+        <Metric label="Gasto real" value={<MoneyAmount amount={spent} currency={budget.currency} />} />
+        <Metric label="Restante" value={<MoneyAmount amount={remaining} currency={budget.currency} />} />
         <Metric label="Usado" value={`${usedPercent.toFixed(1)}%`} />
       </div>
 
@@ -440,12 +441,12 @@ function formatBudgetMonth(month: string) {
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
 
   return (
     <span className="space-y-1">
       {totals.map((total) => (
-        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>
       ))}
     </span>
   );
@@ -485,7 +486,7 @@ function SummaryCard({ label, value }: { label: string; value: React.ReactNode }
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-md border border-slate-200 p-3">
       <p className="text-xs text-slate-500">{label}</p>

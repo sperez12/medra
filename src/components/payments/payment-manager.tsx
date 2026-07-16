@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import {
   getDefaultPeriodFilter,
   getPeriodLabel,
@@ -438,7 +439,7 @@ export function PaymentManager() {
                   <td className="py-3 pr-4 text-slate-700">{getAccountName(payment.account_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                   <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripción"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(payment.amount), getCardCurrency(payment.credit_card_id))}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(payment.amount)} currency={getCardCurrency(payment.credit_card_id)} /></td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">
                       <button

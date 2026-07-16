@@ -28,15 +28,28 @@ export function isSupportedCurrency(currency: string) {
 
 export function formatCurrency(amount: number, currency: string = DEFAULT_CURRENCY) {
   const normalizedCurrency = normalizeCurrency(currency);
+  const { prefix, suffix, decimals } = getCurrencyFormatParts(normalizedCurrency);
+  const sign = amount < 0 ? "-" : "";
+  const formattedAmount = Math.abs(amount).toLocaleString("es-MX", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 
-  try {
-    return amount.toLocaleString("es-MX", {
-      style: "currency",
-      currency: normalizedCurrency,
-    });
-  } catch {
-    return `${amount.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${normalizedCurrency}`;
-  }
+  return `${sign}${prefix}${formattedAmount}${suffix ? ` ${suffix}` : ""}`;
+}
+
+export function getCurrencyFormatParts(currency: string) {
+  const symbols: Record<string, { prefix: string; suffix?: string; decimals: number }> = {
+    MXN: { prefix: "$", suffix: "MXN", decimals: 2 },
+    USD: { prefix: "$", suffix: "USD", decimals: 2 },
+    EUR: { prefix: "€", decimals: 2 },
+    GBP: { prefix: "£", decimals: 2 },
+    JPY: { prefix: "¥", decimals: 0 },
+    CAD: { prefix: "$", suffix: "CAD", decimals: 2 },
+    CHF: { prefix: "CHF ", decimals: 2 },
+  };
+
+  return symbols[normalizeCurrency(currency)] ?? { prefix: "", suffix: normalizeCurrency(currency), decimals: 2 };
 }
 
 export function groupMoneyByCurrency<T>(

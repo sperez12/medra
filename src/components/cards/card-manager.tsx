@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
-import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { MoneyAmount } from "@/components/ui/money-amount";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -324,17 +325,17 @@ export function CardManager() {
                       {card.bank} - **** {card.last_four_digits}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      Limite: {formatCurrency(limit, card.currency)}
+                      Limite: <MoneyAmount amount={limit} currency={card.currency} />
                     </p>
                   </div>
                   <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
                 </div>
 
                 <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-                  <Metric label="Gasto del periodo" value={formatCurrency(total, card.currency)} />
-                  <Metric label="Pagos del periodo" value={formatCurrency(paid, card.currency)} />
-                  <Metric label="Saldo pendiente estimado" value={formatCurrency(pending, card.currency)} strong />
-                  <Metric label="Disponible estimado" value={formatCurrency(available, card.currency)} />
+                  <Metric label="Gasto del periodo" value={<MoneyAmount amount={total} currency={card.currency} />} />
+                  <Metric label="Pagos del periodo" value={<MoneyAmount amount={paid} currency={card.currency} />} />
+                  <Metric label="Saldo pendiente estimado" value={<MoneyAmount amount={pending} currency={card.currency} />} strong />
+                  <Metric label="Disponible estimado" value={<MoneyAmount amount={available} currency={card.currency} />} />
                 </div>
 
                 <div>
@@ -495,7 +496,7 @@ function getFriendlyCardError(error: string) {
   return `No se pudo completar la accion. Detalle: ${error}`;
 }
 
-function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function Metric({ label, value, strong = false }: { label: string; value: ReactNode; strong?: boolean }) {
   return (
     <div className="rounded-md border border-slate-200 p-3">
       <p className="text-xs text-slate-500">{label}</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Account, AccountMovement, AccountMovementType, AccountTransfer, AccountType } from "@/types/finance";
@@ -636,7 +637,7 @@ function AccountList({
               <StatusPill active={account.is_active} />
             </div>
             <p className="mt-4 text-sm text-slate-500">Saldo actual estimado</p>
-            <p className="break-words text-2xl font-bold text-slate-950">{formatCurrency(balance, account.currency)}</p>
+            <p className="break-words text-2xl font-bold text-slate-950"><MoneyAmount amount={balance} currency={account.currency} /></p>
             <p className="mt-1 text-xs text-slate-500">{movementCount} movimiento(s)</p>
             {account.description ? <p className="mt-3 text-sm text-slate-600">{account.description}</p> : null}
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -763,7 +764,7 @@ function RecentTransfers({
                   <td className="py-3 pr-4 text-slate-700">{fromAccount?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{toAccount?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{transfer.description || "Sin descripcion"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(transfer.amount), transfer.currency)}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(transfer.amount)} currency={transfer.currency} /></td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">
                       <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={() => onEdit(transfer)} type="button">
@@ -812,7 +813,7 @@ function RecentMovements({ accounts, movements }: { accounts: Account[]; movemen
                     {movement.transfer_id ? <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">Transferencia</span> : null}
                   </td>
                   <td className="py-3 pr-4 text-slate-700">{movement.description || "Sin descripcion"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(movement.amount), account?.currency)}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(movement.amount)} currency={account?.currency} /></td>
                 </tr>
               );
             })}
@@ -897,12 +898,12 @@ function getFriendlyAccountError(error: string) {
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
 
   return (
     <span className="space-y-1">
       {totals.map((total) => (
-        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>
       ))}
     </span>
   );

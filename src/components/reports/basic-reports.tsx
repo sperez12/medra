@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
-import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { MoneyAmount } from "@/components/ui/money-amount";
+import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -938,12 +939,12 @@ function buildPendingTotals(spentTotals: Array<{ currency: string; amount: numbe
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
 
   return (
     <span className="space-y-1">
       {totals.map((total) => (
-        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>
       ))}
     </span>
   );
@@ -1003,11 +1004,11 @@ function NetWorthPreviewCard({ row }: { row: NetWorthSnapshotRow }) {
         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{row.currency}</span>
       </div>
       <p className="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">Patrimonio neto</p>
-      <p className="mt-1 text-2xl font-bold text-slate-950">{formatCurrency(row.netWorth, row.currency)}</p>
+      <p className="mt-1 text-2xl font-bold text-slate-950"><MoneyAmount amount={row.netWorth} currency={row.currency} /></p>
       <div className="mt-3 space-y-1 text-sm text-slate-600">
-        <p>Cuentas: {formatCurrency(row.totalAccounts, row.currency)}</p>
-        <p>Inversiones: {formatCurrency(row.totalInvestments, row.currency)}</p>
-        <p>Deuda tarjetas: {formatCurrency(row.pendingCreditCards, row.currency)}</p>
+        <p>Cuentas: <MoneyAmount amount={row.totalAccounts} currency={row.currency} /></p>
+        <p>Inversiones: <MoneyAmount amount={row.totalInvestments} currency={row.currency} /></p>
+        <p>Deuda tarjetas: <MoneyAmount amount={row.pendingCreditCards} currency={row.currency} /></p>
       </div>
     </article>
   );
@@ -1034,7 +1035,7 @@ function SnapshotHistoryBars({
                   <p className="text-sm font-semibold text-slate-800">{row.currency}</p>
                   {hasEvolution ? (
                     <p className={`text-xs font-medium ${changeTone}`}>
-                      Cambio: {formatCurrency(row.absoluteChange, row.currency)}
+                      Cambio: <MoneyAmount amount={row.absoluteChange} currency={row.currency} />
                       {row.percentChange === null ? "" : ` (${formatPercentChange(row.percentChange)})`}
                     </p>
                   ) : (
@@ -1043,7 +1044,7 @@ function SnapshotHistoryBars({
                 </div>
                 {row.lastSnapshot ? (
                   <div className="min-w-0 text-sm sm:text-right">
-                    <p className="font-semibold text-slate-950">{formatCurrency(Number(row.lastSnapshot.net_worth), row.currency)}</p>
+                    <p className="font-semibold text-slate-950"><MoneyAmount amount={Number(row.lastSnapshot.net_worth)} currency={row.currency} /></p>
                     <p className="text-xs text-slate-500">Ultimo: {formatDate(row.lastSnapshot.snapshot_date)}</p>
                   </div>
                 ) : null}
@@ -1052,7 +1053,7 @@ function SnapshotHistoryBars({
                 <div key={snapshot.id}>
                   <div className="flex min-w-0 flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                     <span>{formatDate(snapshot.snapshot_date)}</span>
-                    <span className="break-words font-medium text-slate-900">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</span>
+                    <span className="break-words font-medium text-slate-900"><MoneyAmount amount={Number(snapshot.net_worth)} currency={snapshot.currency} /></span>
                   </div>
                   <div className="mt-1 h-2 w-full max-w-full rounded-full bg-slate-100">
                     <div
@@ -1107,10 +1108,10 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
                 <td className="py-3 pr-3">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{snapshot.currency}</span>
                 </td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.total_accounts), snapshot.currency)}</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.total_investments), snapshot.currency)}</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(Number(snapshot.pending_credit_cards), snapshot.currency)}</td>
-                <td className="py-3 pr-3 text-right text-base font-bold text-slate-950">{formatCurrency(Number(snapshot.net_worth), snapshot.currency)}</td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={Number(snapshot.total_accounts)} currency={snapshot.currency} /></td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={Number(snapshot.total_investments)} currency={snapshot.currency} /></td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={Number(snapshot.pending_credit_cards)} currency={snapshot.currency} /></td>
+                <td className="py-3 pr-3 text-right text-base font-bold text-slate-950"><MoneyAmount amount={Number(snapshot.net_worth)} currency={snapshot.currency} /></td>
                 <td className="py-3 pr-3 text-slate-700">{snapshot.notes || "Sin notas"}</td>
                 <td className="py-3 text-right">
                   <button className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => onDelete(snapshot)} type="button">
@@ -1152,7 +1153,7 @@ function ConsolidatedNetWorthSection({
 
       <div className="mt-5 min-w-0 rounded-md bg-slate-950 p-4 text-white">
         <p className="text-sm text-slate-300">Total consolidado estimado en {result.baseCurrency}</p>
-        <p className="mt-1 text-3xl font-bold">{formatCurrency(result.total, result.baseCurrency)}</p>
+        <p className="mt-1 text-3xl font-bold"><MoneyAmount amount={result.total} currency={result.baseCurrency} /></p>
       </div>
 
       {result.missingRates.length > 0 ? (
@@ -1172,14 +1173,14 @@ function ConsolidatedNetWorthSection({
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
-                <p className="text-sm text-slate-600">Original: {formatCurrency(row.originalAmount, row.currency)}</p>
+                <p className="text-sm text-slate-600">Original: <MoneyAmount amount={row.originalAmount} currency={row.currency} /></p>
               </div>
               <div className="min-w-0 text-sm sm:text-right">
                 {row.convertedAmount === null ? (
                   <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
                 ) : (
                   <>
-                    <p className="font-semibold text-slate-950">{formatCurrency(row.convertedAmount, result.baseCurrency)}</p>
+                    <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                     <p className="text-xs text-slate-500">
                       {row.rate
                         ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date)}`
@@ -1207,21 +1208,24 @@ function ConsolidatedNetWorthSection({
             <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-3">
               <SummaryCard
                 label="Actual consolidado"
-                value={formatCurrency(result.total, result.baseCurrency)}
+                value={<MoneyAmount amount={result.total} currency={result.baseCurrency} />}
                 strong
               />
               <SummaryCard
                 label="Ultimo snapshot convertible"
-                value={formatCurrency(result.snapshotComparison.total, result.baseCurrency)}
+                value={<MoneyAmount amount={result.snapshotComparison.total} currency={result.baseCurrency} />}
               />
               <SummaryCard
                 label="Diferencia"
                 value={
                   result.snapshotComparison.difference === null
                     ? "Sin datos"
-                    : `${formatCurrency(result.snapshotComparison.difference, result.baseCurrency)}${
-                        result.snapshotComparison.percentDifference === null ? "" : ` (${formatPercentChange(result.snapshotComparison.percentDifference)})`
-                      }`
+                    : (
+                      <>
+                        <MoneyAmount amount={result.snapshotComparison.difference} currency={result.baseCurrency} />
+                        {result.snapshotComparison.percentDifference === null ? "" : ` (${formatPercentChange(result.snapshotComparison.percentDifference)})`}
+                      </>
+                    )
                 }
                 strong
               />
@@ -1240,7 +1244,7 @@ function ConsolidatedNetWorthSection({
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
                       <p className="text-sm text-slate-600">
-                        Snapshot {row.sourceDate ? formatDate(row.sourceDate) : "sin fecha"}: {formatCurrency(row.originalAmount, row.currency)}
+                        Snapshot {row.sourceDate ? formatDate(row.sourceDate) : "sin fecha"}: <MoneyAmount amount={row.originalAmount} currency={row.currency} />
                       </p>
                     </div>
                     <div className="min-w-0 text-sm sm:text-right">
@@ -1248,7 +1252,7 @@ function ConsolidatedNetWorthSection({
                         <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
                       ) : (
                         <>
-                          <p className="font-semibold text-slate-950">{formatCurrency(row.convertedAmount, result.baseCurrency)}</p>
+                          <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                           <p className="text-xs text-slate-500">
                             {row.rate
                               ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date)}`
@@ -1423,7 +1427,7 @@ function BarReport({ title, rows, emptyText }: { title: string; rows: ReportRow[
           <div className="min-w-0" key={row.id}>
             <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <span className="min-w-0 truncate text-slate-700">{row.label}</span>
-              <span className="break-words font-medium text-slate-950">{formatCurrency(row.value, row.currency)}</span>
+              <span className="break-words font-medium text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></span>
             </div>
             <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
               <div className="h-2 rounded-full bg-teal-600" style={{ width: `${Math.max((row.value / max) * 100, 2)}%` }} />
@@ -1461,7 +1465,7 @@ function ComparisonBar({ label, value, max, currency, colorClass }: { label: str
     <div className="mt-2 min-w-0">
       <div className="flex min-w-0 flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
         <span>{label}</span>
-        <span className="break-words">{formatCurrency(value, currency)}</span>
+        <span className="break-words"><MoneyAmount amount={value} currency={currency} /></span>
       </div>
       <div className="mt-1 h-2 w-full rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${Math.max((value / max) * 100, value > 0 ? 2 : 0)}%` }} />
@@ -1500,7 +1504,7 @@ function HighestExpensesTable({
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(expense.amount), getCardCurrency(cards, expense.credit_card_id))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(expense.amount)} currency={getCardCurrency(cards, expense.credit_card_id)} /></td>
               </tr>
             ))}
           </tbody>
@@ -1533,7 +1537,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, payment.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                 <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(payment.amount), getCardCurrency(cards, payment.credit_card_id))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(payment.amount)} currency={getCardCurrency(cards, payment.credit_card_id)} /></td>
               </tr>
             ))}
           </tbody>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
-import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -707,55 +708,6 @@ function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: num
   );
 }
 
-function MoneyAmount({
-  amount,
-  currency,
-  className = "",
-  codeClassName = "",
-}: {
-  amount: number;
-  currency: string;
-  className?: string;
-  codeClassName?: string;
-}) {
-  const normalizedCurrency = normalizeCurrency(currency);
-  const { prefix, suffix } = getDashboardCurrencyParts(normalizedCurrency);
-  const sign = amount < 0 ? "-" : "";
-  const formattedAmount = Math.abs(amount).toLocaleString("es-MX", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-  return (
-    <span className={`inline-flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5 ${className}`}>
-      <span className="break-words">
-        {sign}
-        {prefix}
-        {formattedAmount}
-      </span>
-      {suffix ? (
-        <span className={`text-[0.58em] font-semibold uppercase tracking-[0.08em] opacity-70 ${codeClassName}`}>
-          {suffix}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-function getDashboardCurrencyParts(currency: string) {
-  const symbols: Record<string, { prefix: string; suffix?: string }> = {
-    MXN: { prefix: "$", suffix: "MXN" },
-    USD: { prefix: "$", suffix: "USD" },
-    EUR: { prefix: "€" },
-    GBP: { prefix: "£" },
-    JPY: { prefix: "¥" },
-    CAD: { prefix: "$", suffix: "CAD" },
-    CHF: { prefix: "CHF " },
-  };
-
-  return symbols[currency] ?? { prefix: "", suffix: currency };
-}
-
 function HeroMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-3">
@@ -904,10 +856,10 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
                   </p>
                 </td>
                 <td className="py-3 pr-3 text-slate-700">{summary.card.currency}</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.spent, summary.card.currency)}</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.paid, summary.card.currency)}</td>
-                <td className="py-3 pr-3 text-right font-semibold text-slate-950">{formatCurrency(summary.pending, summary.card.currency)}</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{formatCurrency(summary.available, summary.card.currency)}</td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={summary.spent} currency={summary.card.currency} /></td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={summary.paid} currency={summary.card.currency} /></td>
+                <td className="py-3 pr-3 text-right font-semibold text-slate-950"><MoneyAmount amount={summary.pending} currency={summary.card.currency} /></td>
+                <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={summary.available} currency={summary.card.currency} /></td>
                 <td className="py-3 pr-3 text-right text-slate-700">{summary.usagePercent.toFixed(1)}%</td>
                 <td className="py-3 pr-3 text-right text-slate-700">{summary.daysToCut} dia(s)</td>
                 <td className="py-3 text-right text-slate-700">{summary.daysToPayment} dia(s)</td>
@@ -967,7 +919,7 @@ function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; bal
               <p className="font-medium text-slate-900">{account.name}</p>
               <p className="text-sm text-slate-500">{account.institution || "Sin institucion"} - {account.currency}</p>
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right">{formatCurrency(balance, account.currency)}</p>
+            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right"><MoneyAmount amount={balance} currency={account.currency} /></p>
           </div>
         ))}
       </div>
@@ -999,7 +951,7 @@ function RecentAccountMovementsTable({ accounts, movements }: { accounts: Accoun
                   {movementTypeLabels[movement.movement_type]}
                   {movement.transfer_id ? <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">Transf.</span> : null}
                 </td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(movement.amount), getAccountCurrency(accounts, movement.account_id))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(movement.amount)} currency={getAccountCurrency(accounts, movement.account_id)} /></td>
               </tr>
             ))}
           </tbody>
@@ -1030,7 +982,7 @@ function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; tr
                 <td className="py-3 pr-3 text-slate-700">{formatDate(transfer.transfer_date)}</td>
                 <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.from_account_id)}</td>
                 <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.to_account_id)}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(transfer.amount), transfer.currency)}</td>
+                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(transfer.amount)} currency={transfer.currency} /></td>
               </tr>
             ))}
           </tbody>
@@ -1059,7 +1011,7 @@ function UpcomingGoals({
             <p className="font-medium text-slate-950">{goal.name}</p>
             <p className="text-sm text-slate-500">{goal.target_date ? formatDate(goal.target_date) : "Sin fecha"}</p>
             <p className="mt-2 text-sm text-slate-700">
-              {formatCurrency(currentAmount, goal.currency)} de {formatCurrency(Number(goal.target_amount), goal.currency)}
+              <MoneyAmount amount={currentAmount} currency={goal.currency} /> de <MoneyAmount amount={Number(goal.target_amount)} currency={goal.currency} />
             </p>
             <div className="mt-2 h-2 rounded-full bg-slate-200">
               <div className="h-2 rounded-full bg-blue-500" style={{ width: `${Math.min(progressPercent, 100)}%` }} />
@@ -1095,7 +1047,7 @@ function TopInvestmentsList({
               <p className="font-medium text-slate-900">{row.name}</p>
               <p className="text-sm text-slate-500">{row.detail}</p>
             </div>
-            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right">{formatCurrency(row.value, row.currency)}</p>
+            <p className="break-words text-sm font-semibold text-slate-950 sm:text-right"><MoneyAmount amount={row.value} currency={row.currency} /></p>
           </div>
         ))}
       </div>
@@ -1208,7 +1160,7 @@ function RecentExpensesTable({
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
                 <td className="py-3 text-right font-semibold text-slate-950">
-                  {formatCurrency(Number(expense.amount), getCardCurrency(cards, expense.credit_card_id))}
+                  <MoneyAmount amount={Number(expense.amount)} currency={getCardCurrency(cards, expense.credit_card_id)} />
                 </td>
               </tr>
             ))}
@@ -1245,7 +1197,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                 <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
                 <td className="py-3 text-right font-semibold text-slate-950">
-                  {formatCurrency(Number(payment.amount), getCardCurrency(cards, payment.credit_card_id))}
+                  <MoneyAmount amount={Number(payment.amount)} currency={getCardCurrency(cards, payment.credit_card_id)} />
                 </td>
               </tr>
             ))}

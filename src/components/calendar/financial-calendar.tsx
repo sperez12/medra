@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
+import { MoneyAmount } from "@/components/ui/money-amount";
+import { DEFAULT_CURRENCY } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
@@ -330,7 +331,7 @@ function EventItem({ event }: { event: CalendarEvent }) {
         </div>
         <div className="text-left sm:text-right">
           <p className="font-semibold text-slate-950">{event.date.toLocaleDateString("es-MX")}</p>
-          {event.amount ? <p className="mt-1 text-sm text-slate-600">{formatCurrency(event.amount, event.currency)}</p> : null}
+          {event.amount ? <p className="mt-1 text-sm text-slate-600"><MoneyAmount amount={event.amount} currency={event.currency} /></p> : null}
         </div>
       </div>
     </article>

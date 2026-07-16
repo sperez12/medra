@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Account, Goal, GoalContribution, GoalType } from "@/types/finance";
@@ -592,9 +593,9 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
       </div>
 
       <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-5">
-        <Metric label="Objetivo" value={formatCurrency(Number(goal.target_amount), goal.currency)} />
-        <Metric label="Actual" value={formatCurrency(currentAmount, goal.currency)} />
-        <Metric label="Restante" value={formatCurrency(remaining, goal.currency)} />
+        <Metric label="Objetivo" value={<MoneyAmount amount={Number(goal.target_amount)} currency={goal.currency} />} />
+        <Metric label="Actual" value={<MoneyAmount amount={currentAmount} currency={goal.currency} />} />
+        <Metric label="Restante" value={<MoneyAmount amount={remaining} currency={goal.currency} />} />
         <Metric label="Avance" value={`${progressPercent.toFixed(1)}%`} />
         <Metric label="Tiempo" value={daysUntilTarget === null ? "Sin fecha" : formatTargetDays(daysUntilTarget)} />
       </div>
@@ -652,7 +653,7 @@ function RecentContributions({
                   <td className="py-3 pr-4 text-slate-700">{goal?.name ?? "Meta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{getAccountName(accounts, contribution.account_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{contribution.description || "Sin descripcion"}</td>
-                  <td className="py-3 text-right font-semibold text-slate-950">{formatCurrency(Number(contribution.amount), goal?.currency)}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(contribution.amount)} currency={goal?.currency} /></td>
                   <td className="py-3 pl-4">
                     <div className="flex justify-end gap-2">
                       <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={() => onEdit(contribution)} type="button">
@@ -773,12 +774,12 @@ function formatDate(dateValue: string) {
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
 
   return (
     <span className="min-w-0 space-y-1">
       {totals.map((total) => (
-        <span className="block break-words" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block break-words" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>
       ))}
     </span>
   );
@@ -852,7 +853,7 @@ function SummaryCard({ label, value }: { label: string; value: React.ReactNode }
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-200 p-3">
       <p className="text-xs text-slate-500">{label}</p>
