@@ -8,11 +8,11 @@ export default function LoginPage() {
   return (
     <AppShell requireAuth={false}>
       <div className="mx-auto max-w-md pp-card p-6 sm:p-7">
-        <div className="flex items-center gap-3">
-          <BrandMark className="h-12 w-12 shrink-0" />
+        <div className="flex items-center gap-4">
+          <BrandMark className="h-14 w-14 shrink-0" />
           <div>
-            <p className="pp-display text-3xl leading-none">{BRAND.visibleName}</p>
-            <p className="mt-1 text-sm font-medium text-brand-700">{BRAND.slogan}</p>
+            <p className="pp-display text-[2.15rem] leading-[0.9]">{BRAND.visibleName}</p>
+            <p className="mt-1.5 text-sm font-medium leading-tight text-brand-700">{BRAND.slogan}</p>
           </div>
         </div>
         <h1 className="mt-7 text-2xl font-semibold text-finance-ink">Iniciar sesion</h1>

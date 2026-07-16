@@ -326,8 +326,8 @@ export function DashboardSummary() {
         <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-brand-200/20 blur-3xl" />
         <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-end">
           <div className="min-w-0">
-            <div className="flex items-center gap-3">
-              <BrandMark className="h-12 w-12 shrink-0" variant="dark" />
+            <div className="flex items-center gap-4">
+              <BrandMark className="h-14 w-14 shrink-0 sm:h-16 sm:w-16" variant="dark" />
               <div>
                 <p className="text-sm font-medium text-brand-200">{BRAND.slogan}</p>
                 <h1 className="pp-display mt-1 text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>

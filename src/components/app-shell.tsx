@@ -16,13 +16,13 @@ export function AppShell({ children, requireAuth = true }: AppShellProps) {
       <header className="border-b border-finance-line/80 bg-white/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <BrandMark className="h-11 w-11 shrink-0" />
+            <div className="flex min-w-0 items-center gap-3.5">
+              <BrandMark className="h-12 w-12 shrink-0" />
               <div className="min-w-0">
-                <Link href="/" className="pp-display min-w-0 break-words text-3xl leading-none">
+                <Link href="/" className="pp-display min-w-0 break-words text-[2rem] leading-[0.9]">
                   {BRAND.visibleName}
                 </Link>
-                <p className="mt-1 text-xs font-medium text-brand-700">
+                <p className="mt-1.5 text-xs font-medium leading-tight text-brand-700">
                   {BRAND.slogan}
                 </p>
                 <p className="sr-only">{BRAND.technicalName}</p>
