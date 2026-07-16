@@ -6,19 +6,15 @@ type BrandMarkProps = {
 };
 
 export function BrandMark({ className = "h-10 w-10", variant = "light" }: BrandMarkProps) {
-  const surfaceClass =
-    variant === "dark"
-      ? ""
-      : "bg-white shadow-sm ring-1 ring-finance-line/70";
   const imageClass =
     variant === "dark"
-      ? "scale-[1.26]"
-      : "translate-x-[1.5%] translate-y-[1%] scale-[1.12]";
+      ? "drop-shadow-[0_10px_24px_rgba(167,213,201,0.22)]"
+      : "drop-shadow-[0_6px_14px_rgba(13,27,42,0.12)]";
 
   return (
     <span
       aria-hidden="true"
-      className={`${className} inline-flex aspect-square items-center justify-center overflow-hidden rounded-[28%] ${surfaceClass}`}
+      className={`${className} inline-flex aspect-square items-center justify-center overflow-visible`}
     >
       <Image
         alt=""

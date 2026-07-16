@@ -321,9 +321,10 @@ export function DashboardSummary() {
 
   return (
     <div className="max-w-full space-y-6 overflow-x-hidden">
-      <section className="relative overflow-hidden rounded-3xl border border-brand-900/10 bg-brand-900 p-5 text-white shadow-sm sm:p-7">
+      <section className="relative overflow-hidden rounded-3xl border border-brand-900/10 bg-gradient-to-br from-[#123a36] via-brand-700 to-brand-900 p-5 text-white shadow-sm sm:p-7">
+        <div className="pointer-events-none absolute -left-20 -top-24 h-80 w-80 rounded-full bg-brand-200/24 blur-3xl" />
         <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-brand-200/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-finance-ivory/10 blur-3xl" />
         <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-end">
           <div className="min-w-0">
             <div className="flex items-center gap-4 sm:gap-5">
