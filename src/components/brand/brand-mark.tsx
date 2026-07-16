@@ -17,7 +17,7 @@ export function BrandMark({ className = "h-10 w-10", eager = false }: BrandMarkP
         className="block h-full w-full object-contain"
         height={256}
         loading={eager ? "eager" : "lazy"}
-        src="/brand/medra-mark.png"
+        src="/brand/medra-mark-transparent.png"
         width={256}
       />
     </span>
