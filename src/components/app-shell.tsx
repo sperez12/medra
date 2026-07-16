@@ -13,13 +13,13 @@ type AppShellProps = {
 export function AppShell({ children, requireAuth = true }: AppShellProps) {
   return (
     <div className="min-h-screen overflow-x-hidden">
-      <header className="border-b border-finance-line/80 bg-white/90 shadow-sm backdrop-blur">
-        <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
+      <header className="sticky top-0 z-50 border-b border-finance-line/80 bg-[#fbfaf7]/90 shadow-sm backdrop-blur">
+        <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-3 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-4">
-              <BrandMark className="h-[3.35rem] w-[3.35rem] shrink-0" eager />
+              <BrandMark className="h-16 w-16 shrink-0 sm:h-[4.25rem] sm:w-[4.25rem]" eager />
               <div className="min-w-0">
-                <Link href="/" className="pp-display min-w-0 break-words text-[2rem] leading-[0.9]">
+                <Link href="/" className="pp-display min-w-0 break-words text-[2.15rem] leading-[0.9]">
                   {BRAND.visibleName}
                 </Link>
                 <p className="mt-1.5 text-xs font-medium leading-tight text-brand-700">
