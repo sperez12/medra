@@ -16,8 +16,8 @@ export function AppShell({ children, requireAuth = true }: AppShellProps) {
       <header className="border-b border-finance-line/80 bg-white/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-4 px-4 py-5 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3.5">
-              <BrandMark className="h-12 w-12 shrink-0" />
+            <div className="flex min-w-0 items-center gap-4">
+              <BrandMark className="h-[3.35rem] w-[3.35rem] shrink-0" />
               <div className="min-w-0">
                 <Link href="/" className="pp-display min-w-0 break-words text-[2rem] leading-[0.9]">
                   {BRAND.visibleName}
