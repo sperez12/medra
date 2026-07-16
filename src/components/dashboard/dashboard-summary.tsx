@@ -328,7 +328,7 @@ export function DashboardSummary() {
         <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-end">
           <div className="min-w-0">
             <div className="flex items-center gap-4 sm:gap-5">
-              <BrandMark className="h-[4.75rem] w-[4.75rem] shrink-0 sm:h-24 sm:w-24" variant="dark" />
+              <BrandMark className="h-[4.75rem] w-[4.75rem] shrink-0 sm:h-24 sm:w-24" eager variant="dark" />
               <div>
                 <h1 className="pp-display text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>
               </div>

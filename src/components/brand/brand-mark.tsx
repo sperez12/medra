@@ -2,15 +2,11 @@ import Image from "next/image";
 
 type BrandMarkProps = {
   className?: string;
+  eager?: boolean;
   variant?: "light" | "dark";
 };
 
-export function BrandMark({ className = "h-10 w-10", variant = "light" }: BrandMarkProps) {
-  const imageClass =
-    variant === "dark"
-      ? "drop-shadow-[0_10px_24px_rgba(167,213,201,0.22)]"
-      : "drop-shadow-[0_6px_14px_rgba(13,27,42,0.12)]";
-
+export function BrandMark({ className = "h-10 w-10", eager = false }: BrandMarkProps) {
   return (
     <span
       aria-hidden="true"
@@ -18,9 +14,9 @@ export function BrandMark({ className = "h-10 w-10", variant = "light" }: BrandM
     >
       <Image
         alt=""
-        className={`block h-full w-full object-contain ${imageClass}`}
+        className="block h-full w-full object-contain"
         height={256}
-        priority={false}
+        loading={eager ? "eager" : "lazy"}
         src="/brand/medra-mark.png"
         width={256}
       />

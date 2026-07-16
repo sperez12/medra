@@ -9,7 +9,7 @@ export default function LoginPage() {
     <AppShell requireAuth={false}>
       <div className="mx-auto max-w-md pp-card p-6 sm:p-7">
         <div className="flex items-center gap-4">
-          <BrandMark className="h-14 w-14 shrink-0" />
+          <BrandMark className="h-14 w-14 shrink-0" eager />
           <div>
             <p className="pp-display text-[2.15rem] leading-[0.9]">{BRAND.visibleName}</p>
             <p className="mt-1.5 text-sm font-medium leading-tight text-brand-700">{BRAND.slogan}</p>
