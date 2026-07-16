@@ -323,7 +323,7 @@ export function DashboardSummary() {
         <div className="pointer-events-none absolute -left-20 -top-24 h-80 w-80 rounded-full bg-brand-200/24 blur-3xl" />
         <div className="pointer-events-none absolute -right-16 -top-24 h-72 w-72 rounded-full bg-brand-500/25 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-finance-ivory/10 blur-3xl" />
-        <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-end">
+        <div className="relative grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)] lg:items-center">
           <div className="min-w-0 lg:pl-6">
             <h1 className="pp-display text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>
             <p className="mt-5 max-w-xl text-sm leading-7 text-white/75 sm:text-base">
@@ -334,8 +334,7 @@ export function DashboardSummary() {
             </p>
           </div>
           <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Senales clave</p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <HeroMetric label="Tarjetas" value={cards.length} />
               <HeroMetric label="Cuentas" value={activeAccountSummaries.length} />
               <HeroMetric label="Metas" value={activeGoalSummaries.length} />
@@ -695,15 +694,66 @@ function buildTopInvestmentPlatforms(
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {
-  if (totals.length === 0) return <span>{formatCurrency(0, DEFAULT_CURRENCY)}</span>;
+  if (totals.length === 0) return <MoneyAmount amount={0} currency={DEFAULT_CURRENCY} />;
 
   return (
     <span className="space-y-1">
       {totals.map((total) => (
-        <span className="block" key={total.currency}>{formatCurrency(total.amount, total.currency)}</span>
+        <span className="block" key={total.currency}>
+          <MoneyAmount amount={total.amount} currency={total.currency} />
+        </span>
       ))}
     </span>
   );
+}
+
+function MoneyAmount({
+  amount,
+  currency,
+  className = "",
+  codeClassName = "",
+}: {
+  amount: number;
+  currency: string;
+  className?: string;
+  codeClassName?: string;
+}) {
+  const normalizedCurrency = normalizeCurrency(currency);
+  const { prefix, suffix } = getDashboardCurrencyParts(normalizedCurrency);
+  const sign = amount < 0 ? "-" : "";
+  const formattedAmount = Math.abs(amount).toLocaleString("es-MX", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return (
+    <span className={`inline-flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5 ${className}`}>
+      <span className="break-words">
+        {sign}
+        {prefix}
+        {formattedAmount}
+      </span>
+      {suffix ? (
+        <span className={`text-[0.58em] font-semibold uppercase tracking-[0.08em] opacity-70 ${codeClassName}`}>
+          {suffix}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function getDashboardCurrencyParts(currency: string) {
+  const symbols: Record<string, { prefix: string; suffix?: string }> = {
+    MXN: { prefix: "$", suffix: "MXN" },
+    USD: { prefix: "$", suffix: "USD" },
+    EUR: { prefix: "€" },
+    GBP: { prefix: "£" },
+    JPY: { prefix: "¥" },
+    CAD: { prefix: "$", suffix: "CAD" },
+    CHF: { prefix: "CHF " },
+  };
+
+  return symbols[currency] ?? { prefix: "", suffix: currency };
 }
 
 function HeroMetric({ label, value }: { label: string; value: number }) {
@@ -764,7 +814,7 @@ function CardHighlight({
         <p className="text-sm text-slate-700">
           {showUsage
             ? `${summary.usagePercent.toFixed(1)}% usado`
-            : `${formatCurrency(summary.pending, summary.card.currency)} pendiente`}
+            : <><MoneyAmount amount={summary.pending} currency={summary.card.currency} /> pendiente</>}
         </p>
       </div>
     </div>
@@ -819,10 +869,10 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
               <p className="shrink-0 text-right text-sm font-semibold text-slate-950">{summary.usagePercent.toFixed(1)}%</p>
             </div>
             <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-              <MiniMetric label="Gastado" value={formatCurrency(summary.spent, summary.card.currency)} />
-              <MiniMetric label="Pagado" value={formatCurrency(summary.paid, summary.card.currency)} />
-              <MiniMetric label="Pendiente" value={formatCurrency(summary.pending, summary.card.currency)} />
-              <MiniMetric label="Disponible" value={formatCurrency(summary.available, summary.card.currency)} />
+              <MiniMetric label="Gastado" value={<MoneyAmount amount={summary.spent} currency={summary.card.currency} />} />
+              <MiniMetric label="Pagado" value={<MoneyAmount amount={summary.paid} currency={summary.card.currency} />} />
+              <MiniMetric label="Pendiente" value={<MoneyAmount amount={summary.pending} currency={summary.card.currency} />} />
+              <MiniMetric label="Disponible" value={<MoneyAmount amount={summary.available} currency={summary.card.currency} />} />
               <MiniMetric label="Corte" value={`${summary.daysToCut} dia(s)`} />
               <MiniMetric label="Pago" value={`${summary.daysToPayment} dia(s)`} />
             </div>
@@ -871,7 +921,7 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function MiniMetric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <p className="text-xs text-slate-500">{label}</p>
@@ -894,11 +944,13 @@ function NetWorthCard({
   return (
     <article className="min-w-0 rounded-2xl border border-brand-900/10 bg-gradient-to-br from-brand-900 to-brand-700 p-5 text-white shadow-sm">
       <p className="pp-badge border-white/10 bg-white/10 text-brand-100">{row.currency}</p>
-      <p className="mt-4 break-words text-3xl font-semibold text-white">{formatCurrency(row.netWorth, row.currency)}</p>
+      <p className="mt-4 break-words text-3xl font-semibold text-white">
+        <MoneyAmount amount={row.netWorth} currency={row.currency} />
+      </p>
       <div className="mt-4 space-y-1 text-sm text-white/75">
-        <p>Cuentas: {formatCurrency(row.accounts, row.currency)}</p>
-        <p>Inversiones: {formatCurrency(row.investments, row.currency)}</p>
-        <p>Deuda tarjetas: {formatCurrency(row.pendingCards, row.currency)}</p>
+        <p>Cuentas: <MoneyAmount amount={row.accounts} currency={row.currency} /></p>
+        <p>Inversiones: <MoneyAmount amount={row.investments} currency={row.currency} /></p>
+        <p>Deuda tarjetas: <MoneyAmount amount={row.pendingCards} currency={row.currency} /></p>
       </div>
     </article>
   );
@@ -1071,7 +1123,9 @@ function DashboardBar({
     <div className="min-w-0">
       <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
         <span className="text-slate-600">{label}</span>
-        <span className="break-words font-medium text-slate-900">{formatCurrency(value, currency)}</span>
+        <span className="break-words font-medium text-slate-900">
+          <MoneyAmount amount={value} currency={currency} />
+        </span>
       </div>
       <div className="mt-2 h-2 w-full rounded-full bg-slate-100">
         <div className={`h-2 rounded-full ${colorClass}`} style={{ width: `${width}%` }} />
