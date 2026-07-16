@@ -12,7 +12,7 @@ type AppShellProps = {
 
 export function AppShell({ children, requireAuth = true }: AppShellProps) {
   return (
-    <div className="min-h-screen overflow-x-hidden">
+    <div className="min-h-screen max-w-full">
       <header className="sticky top-0 z-50 border-b border-finance-line/80 bg-[#fbfaf7]/90 shadow-sm backdrop-blur">
         <div className="mx-auto flex max-w-7xl min-w-0 flex-col gap-3 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
