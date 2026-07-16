@@ -14,11 +14,11 @@ export function BrandMark({ className = "h-10 w-10", variant = "light" }: BrandM
   return (
     <span
       aria-hidden="true"
-      className={`${className} inline-flex items-center justify-center overflow-hidden rounded-[28%] ${surfaceClass}`}
+      className={`${className} inline-flex aspect-square items-center justify-center overflow-hidden rounded-[28%] p-[3%] ${surfaceClass}`}
     >
       <Image
         alt=""
-        className="block h-full w-full scale-[1.18] object-contain"
+        className="block h-full w-full translate-x-[1.5%] translate-y-[1%] scale-[1.12] object-contain"
         height={256}
         priority={false}
         src="/brand/medra-mark.png"

@@ -329,8 +329,7 @@ export function DashboardSummary() {
             <div className="flex items-center gap-4">
               <BrandMark className="h-14 w-14 shrink-0 sm:h-16 sm:w-16" variant="dark" />
               <div>
-                <p className="text-sm font-medium text-brand-200">{BRAND.slogan}</p>
-                <h1 className="pp-display mt-1 text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>
+                <h1 className="pp-display text-4xl leading-none text-white sm:text-5xl">Resumen de patrimonio</h1>
               </div>
             </div>
             <p className="mt-5 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">
