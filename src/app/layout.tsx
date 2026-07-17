@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Patrimonio Personal",
-  description: "App web para gestionar finanzas personales.",
+  title: "Medra",
+  description: "Tu patrimonio, en crecimiento.",
 };
 
 export default function RootLayout({
