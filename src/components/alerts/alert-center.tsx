@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FinancialAlertCard } from "@/components/alerts/financial-alert-card";
 import {
   buildFinancialAlerts,
-  financialAlertSeverityLabels,
+  financialAlertSeverityFilterLabels,
   financialAlertTypeLabels,
   type CalculatedFinancialAlert,
   type FinancialAlertSeverity,
@@ -75,7 +75,7 @@ export function AlertCenter() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "info", text: "Inicia sesion para ver tus alertas financieras." });
+      setMessage({ type: "info", text: "Inicia sesión para ver tus alertas financieras." });
       setIsLoading(false);
       return;
     }
@@ -186,25 +186,40 @@ export function AlertCenter() {
       <section className="pp-card p-5 sm:p-6">
         <div className="flex min-w-0 flex-col gap-2">
           <p className="pp-badge w-fit">Centro de alertas</p>
-          <h1 className="pp-display text-4xl text-finance-ink">Atencion financiera</h1>
+          <h1 className="pp-display text-4xl text-finance-ink">Atención financiera</h1>
           <p className="max-w-3xl text-sm leading-6 text-finance-muted">
-            Alertas calculadas con tus datos actuales. No se guardan como historial, no se envian por correo y no crean
+            Alertas calculadas con tus datos actuales. No se guardan como historial, no se envían por correo y no crean
             notificaciones push.
           </p>
         </div>
 
         {needsMigration ? (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Estas alertas usan valores por defecto. Para guardar preferencias personalizadas, ejecuta la migracion
+            Estas alertas usan valores por defecto. Para guardar preferencias personalizadas, ejecuta la migración
             pendiente en Supabase.
           </p>
         ) : null}
       </section>
 
       <section className="grid min-w-0 gap-4 md:grid-cols-3">
-        <SeveritySummary label="Criticas" value={severityCounts.critical} tone="critical" />
-        <SeveritySummary label="Advertencias" value={severityCounts.warning} tone="warning" />
-        <SeveritySummary label="Informativas" value={severityCounts.info} tone="info" />
+        <SeveritySummary
+          description="Requieren atención inmediata o ya están fuera de rango."
+          label="Críticas"
+          value={severityCounts.critical}
+          tone="critical"
+        />
+        <SeveritySummary
+          description="Conviene revisarlas pronto."
+          label="Advertencias"
+          value={severityCounts.warning}
+          tone="warning"
+        />
+        <SeveritySummary
+          description="Datos o recordatorios de baja urgencia."
+          label="Informativas"
+          value={severityCounts.info}
+          tone="info"
+        />
       </section>
 
       <section className="pp-card p-5 sm:p-6">
@@ -225,7 +240,7 @@ export function AlertCenter() {
                 value={severityFilter}
               >
                 <option value="all">Todas</option>
-                {Object.entries(financialAlertSeverityLabels).map(([value, label]) => (
+                {Object.entries(financialAlertSeverityFilterLabels).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
@@ -284,10 +299,12 @@ function StatusPanel({ text, tone = "info" }: { text: string; tone?: "error" | "
 }
 
 function SeveritySummary({
+  description,
   label,
   tone,
   value,
 }: {
+  description: string;
   label: string;
   tone: FinancialAlertSeverity;
   value: number;
@@ -302,6 +319,7 @@ function SeveritySummary({
     <article className={`min-w-0 rounded-2xl border p-5 shadow-sm ${toneClasses[tone]}`}>
       <p className="text-sm font-medium opacity-80">{label}</p>
       <p className="mt-2 text-3xl font-semibold">{value}</p>
+      <p className="mt-2 text-sm leading-5 opacity-80">{description}</p>
     </article>
   );
 }

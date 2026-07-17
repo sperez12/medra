@@ -67,9 +67,15 @@ type BuildFinancialAlertsInput = {
 const MS_PER_DAY = 86400000;
 
 export const financialAlertSeverityLabels: Record<FinancialAlertSeverity, string> = {
-  critical: "Critica",
+  critical: "Crítica",
   warning: "Advertencia",
   info: "Informativa",
+};
+
+export const financialAlertSeverityFilterLabels: Record<FinancialAlertSeverity, string> = {
+  critical: "Críticas",
+  warning: "Advertencias",
+  info: "Informativas",
 };
 
 export const financialAlertTypeLabels: Record<FinancialAlertType, string> = {
@@ -113,6 +119,20 @@ export function normalizeAlertPreferences(preferences?: Partial<AlertPreferenceV
 export function isMissingAlertPreferencesTableError(error: string | null | undefined) {
   const message = error ?? "";
   return message.includes("user_alert_preferences") || message.includes("schema cache") || message.includes("42P01");
+}
+
+export function formatDayCount(days: number) {
+  return `${days} ${days === 1 ? "día" : "días"}`;
+}
+
+export function formatDaysUntil(days: number) {
+  if (days === 0) return "hoy";
+  if (days === 1) return "mañana";
+  return `en ${formatDayCount(days)}`;
+}
+
+export function formatDaysAgo(days: number) {
+  return `hace ${formatDayCount(days)}`;
 }
 
 export function buildFinancialAlerts({
@@ -179,16 +199,13 @@ function buildCardPaymentAlert(
     return null;
   }
 
-  const dueText =
-    daysToPayment === 0
-      ? `Pago de ${card.name} vence hoy`
-      : `Pago de ${card.name} vence en ${daysToPayment} dia(s)`;
+  const dueText = `Pago de ${card.name} vence ${formatDaysUntil(daysToPayment)}`;
 
   return {
     id: `card-payment-${card.id}`,
     type: "card_payment",
     severity: daysToPayment <= 2 ? "critical" : "warning",
-    title: daysToPayment === 0 ? "Pago de tarjeta vence hoy" : "Pago de tarjeta proximo",
+    title: daysToPayment === 0 ? "Pago de tarjeta vence hoy" : "Pago de tarjeta próximo",
     description: `${dueText}. Saldo pendiente estimado: ${formatCurrency(pending, card.currency)}.`,
     amount: pending,
     currency: card.currency,
@@ -221,7 +238,7 @@ function buildBudgetAlert(
     id: `budget-${budget.id}`,
     type: "budget_limit",
     severity: isExceeded ? "critical" : "warning",
-    title: isExceeded ? "Presupuesto excedido" : "Presupuesto cerca del limite",
+    title: isExceeded ? "Presupuesto excedido" : "Presupuesto cerca del límite",
     description: `${budget.name} lleva ${percent.toFixed(0)}% usado este mes.`,
     amount: spent,
     currency: budget.currency,
@@ -260,7 +277,7 @@ function buildInvestmentPriceAlert(
       type: "investment_price",
       severity: "critical",
       title: "Precio de activo con error",
-      description: `${asset.symbol} usa precio automatico y tiene un error reciente: ${asset.last_price_error}.`,
+      description: `${asset.symbol} usa precio automático y tiene un error reciente: ${asset.last_price_error}.`,
       href: "/inversiones",
       source: "investment",
       metadata: { status: "error" },
@@ -273,7 +290,7 @@ function buildInvestmentPriceAlert(
       type: "investment_price",
       severity: "info",
       title: "Precio de activo pendiente",
-      description: `${asset.symbol} usa precio automatico y aun no tiene fecha de actualizacion.`,
+      description: `${asset.symbol} usa precio automático y aún no tiene fecha de actualización.`,
       href: "/inversiones",
       source: "investment",
       metadata: { status: "missing" },
@@ -292,7 +309,7 @@ function buildInvestmentPriceAlert(
     type: "investment_price",
     severity: "warning",
     title: "Precio de activo antiguo",
-    description: `${asset.symbol} no se actualiza desde hace ${ageInDays} dia(s).`,
+    description: `${asset.symbol} no se actualiza desde ${formatDaysAgo(ageInDays)}.`,
     href: "/inversiones",
     source: "investment",
     metadata: { daysUntil: ageInDays, status: "old" },

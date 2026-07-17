@@ -38,7 +38,7 @@ export function FinancialAlertCard({ alert, compact = false }: FinancialAlertCar
 
       {alert.href && !compact ? (
         <Link className="mt-3 inline-flex text-sm font-semibold underline-offset-4 hover:underline" href={alert.href}>
-          Ver seccion relacionada
+          Ver sección relacionada
         </Link>
       ) : null}
     </article>

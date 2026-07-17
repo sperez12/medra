@@ -8,7 +8,7 @@ import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
-import { buildFinancialAlerts, type CalculatedFinancialAlert } from "@/lib/financial-alerts";
+import { buildFinancialAlerts, formatDayCount, type CalculatedFinancialAlert } from "@/lib/financial-alerts";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserAlertPreferences } from "@/lib/use-user-alert-preferences";
 import { useUserPreferences } from "@/lib/use-user-preferences";
@@ -104,7 +104,7 @@ export function DashboardSummary() {
 
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
-      setMessage({ type: "info", text: "Inicia sesion para ver tu dashboard." });
+      setMessage({ type: "info", text: "Inicia sesión para ver tu dashboard." });
       setIsLoading(false);
       return;
     }
@@ -387,8 +387,8 @@ export function DashboardSummary() {
         <SmallStat label="Cuentas activas" value={activeAccountSummaries.length} />
         <SmallStat label="Presupuestos activos" value={currentBudgetSummaries.length} />
         <SmallStat label="Metas activas" value={activeGoalSummaries.length} />
-        <SmallStat label="Proximas a corte" value={cardsNearCut.length} />
-        <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
+        <SmallStat label="Próximas a corte" value={cardsNearCut.length} />
+        <SmallStat label="Próximas a pago" value={cardsNearPayment.length} />
       </section>
 
       <FinancialAlertsPreview alerts={financialAlerts} />
@@ -397,7 +397,7 @@ export function DashboardSummary() {
         <div className="flex flex-col gap-1">
           <h2 className="pp-display text-3xl">Patrimonio neto estimado</h2>
           <p className="text-sm text-slate-600">
-            Cuentas mas inversiones, menos saldo pendiente de tarjetas. No hay conversion automatica entre monedas. Cada moneda se muestra por separado.
+            Cuentas más inversiones, menos saldo pendiente de tarjetas. No hay conversión automática entre monedas. Cada moneda se muestra por separado.
           </p>
         </div>
         <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -405,7 +405,7 @@ export function DashboardSummary() {
             <NetWorthCard key={row.currency} row={row} />
           ))}
         </div>
-        {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas, inversiones ni saldos de tarjeta para calcular patrimonio." /> : null}
+        {netWorthByCurrency.length === 0 ? <EmptyTableMessage text="Aún no hay cuentas, inversiones ni saldos de tarjeta para calcular patrimonio." /> : null}
       </section>
 
       <section className="pp-card p-5 sm:p-6">
@@ -467,7 +467,7 @@ export function DashboardSummary() {
             <TopInvestmentsList title="Principales activos" rows={topInvestmentAssets} />
           </div>
         ) : (
-          <EmptyTableMessage text="Aun no hay holdings de inversion para resumir. Cuando registres uno, aqui veras tus principales plataformas y activos." />
+          <EmptyTableMessage text="Aún no hay holdings de inversión para resumir. Cuando registres uno, aquí verás tus principales plataformas y activos." />
         )}
       </section>
 
@@ -480,9 +480,9 @@ export function DashboardSummary() {
           <SummaryCard label="Presupuestado" value={<MoneyTotals totals={budgetedByCurrency} />} />
           <SummaryCard label="Gastado" value={<MoneyTotals totals={budgetSpentByCurrency} />} />
           <SummaryCard label="Excedidos" value={String(exceededBudgets.length)} />
-          <SummaryCard label="Cerca del limite" value={String(nearLimitBudgets.length)} />
+          <SummaryCard label="Cerca del límite" value={String(nearLimitBudgets.length)} />
         </div>
-        {currentBudgetSummaries.length === 0 ? <EmptyTableMessage text="Aun no hay presupuestos activos para el mes actual." /> : null}
+        {currentBudgetSummaries.length === 0 ? <EmptyTableMessage text="Aún no hay presupuestos activos para el mes actual." /> : null}
       </section>
 
       <section className="pp-card p-5 sm:p-6">
@@ -499,7 +499,7 @@ export function DashboardSummary() {
         {activeGoalSummaries.length > 0 ? (
           <UpcomingGoals dateFormat={dateFormat} goals={upcomingGoals} />
         ) : (
-          <EmptyTableMessage text="Aun no hay metas activas. Cuando crees una meta, aqui veras su avance y fechas importantes." />
+          <EmptyTableMessage text="Aún no hay metas activas. Cuando crees una meta, aquí verás su avance y fechas importantes." />
         )}
       </section>
 
@@ -512,8 +512,8 @@ export function DashboardSummary() {
         </div>
 
         <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
-          <UpcomingCards title="Tarjetas proximas a corte" items={cardsNearCut} type="cut" />
-          <UpcomingCards title="Tarjetas proximas a pago" items={cardsNearPayment} type="payment" />
+          <UpcomingCards title="Tarjetas próximas a corte" items={cardsNearCut} type="cut" />
+          <UpcomingCards title="Tarjetas próximas a pago" items={cardsNearPayment} type="payment" />
         </div>
 
         <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
@@ -804,7 +804,7 @@ function CardHighlight({
     return (
       <div className="rounded-2xl border border-finance-line bg-finance-mist p-4">
         <p className="text-sm font-semibold text-slate-700">{title}</p>
-        <p className="mt-2 text-sm text-slate-500">Aun no hay saldo pendiente en tarjetas.</p>
+        <p className="mt-2 text-sm text-slate-500">Aún no hay saldo pendiente en tarjetas.</p>
       </div>
     );
   }
@@ -834,9 +834,9 @@ function FinancialAlertsPreview({ alerts }: { alerts: CalculatedFinancialAlert[]
     <section className="pp-card p-5 sm:p-6">
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-slate-950">Atencion financiera</h2>
+          <h2 className="text-lg font-semibold text-slate-950">Atención financiera</h2>
           <p className="text-sm text-slate-600">
-            Alertas sugeridas con tus datos actuales. No se guardan ni envian notificaciones.
+            Alertas sugeridas con tus datos actuales. No se guardan ni envían notificaciones.
           </p>
         </div>
         <Link className="pp-button-secondary w-full justify-center sm:w-fit" href="/alertas">
@@ -858,11 +858,19 @@ function FinancialAlertsPreview({ alerts }: { alerts: CalculatedFinancialAlert[]
 
       {alerts.length > previewAlerts.length ? (
         <p className="mt-3 text-sm text-slate-500">
-          Hay {alerts.length - previewAlerts.length} alerta(s) mas en el centro de alertas.
+          {formatRemainingAlerts(alerts.length - previewAlerts.length)}
         </p>
       ) : null}
     </section>
   );
+}
+
+function formatRemainingAlerts(count: number) {
+  return count === 1 ? "Queda 1 alerta más en el centro de alertas." : `Quedan ${count} alertas más en el centro de alertas.`;
+}
+
+function formatRemainingDays(days: number) {
+  return days === 1 ? "Falta 1 día" : `Faltan ${formatDayCount(days)}`;
 }
 
 function CardCurrencySummary({
@@ -891,7 +899,7 @@ function CardCurrencySummary({
           </div>
         ))}
       </div>
-      {rows.length === 0 ? <EmptyTableMessage text="Aun no hay datos de tarjetas para resumir." /> : null}
+      {rows.length === 0 ? <EmptyTableMessage text="Aún no hay datos de tarjetas para resumir." /> : null}
     </div>
   );
 }
@@ -917,8 +925,8 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
               <MiniMetric label="Pagado" value={<MoneyAmount amount={summary.paid} currency={summary.card.currency} />} />
               <MiniMetric label="Pendiente" value={<MoneyAmount amount={summary.pending} currency={summary.card.currency} />} />
               <MiniMetric label="Disponible" value={<MoneyAmount amount={summary.available} currency={summary.card.currency} />} />
-              <MiniMetric label="Corte" value={`${summary.daysToCut} dia(s)`} />
-              <MiniMetric label="Pago" value={`${summary.daysToPayment} dia(s)`} />
+              <MiniMetric label="Corte" value={formatDayCount(summary.daysToCut)} />
+              <MiniMetric label="Pago" value={formatDayCount(summary.daysToPayment)} />
             </div>
           </article>
         ))}
@@ -953,14 +961,14 @@ function MainCardsTable({ summaries }: { summaries: DashboardCardSummary[] }) {
                 <td className="py-3 pr-3 text-right font-semibold text-slate-950"><MoneyAmount amount={summary.pending} currency={summary.card.currency} /></td>
                 <td className="py-3 pr-3 text-right text-slate-700"><MoneyAmount amount={summary.available} currency={summary.card.currency} /></td>
                 <td className="py-3 pr-3 text-right text-slate-700">{summary.usagePercent.toFixed(1)}%</td>
-                <td className="py-3 pr-3 text-right text-slate-700">{summary.daysToCut} dia(s)</td>
-                <td className="py-3 text-right text-slate-700">{summary.daysToPayment} dia(s)</td>
+                <td className="py-3 pr-3 text-right text-slate-700">{formatDayCount(summary.daysToCut)}</td>
+                <td className="py-3 text-right text-slate-700">{formatDayCount(summary.daysToPayment)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {summaries.length === 0 ? <EmptyTableMessage text="Aun no hay tarjetas activas para mostrar." /> : null}
+      {summaries.length === 0 ? <EmptyTableMessage text="Aún no hay tarjetas activas para mostrar." /> : null}
     </div>
   );
 }
@@ -1015,7 +1023,7 @@ function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; bal
           </div>
         ))}
       </div>
-      {accounts.length === 0 ? <EmptyTableMessage text="Aun no hay cuentas activas." /> : null}
+      {accounts.length === 0 ? <EmptyTableMessage text="Aún no hay cuentas activas." /> : null}
     </div>
   );
 }
@@ -1049,7 +1057,7 @@ function RecentAccountMovementsTable({ accounts, dateFormat, movements }: { acco
           </tbody>
         </table>
       </div>
-      {movements.length === 0 ? <EmptyTableMessage text="Aun no hay movimientos de cuenta." /> : null}
+      {movements.length === 0 ? <EmptyTableMessage text="Aún no hay movimientos de cuenta." /> : null}
     </div>
   );
 }
@@ -1080,7 +1088,7 @@ function RecentTransfersTable({ accounts, dateFormat, transfers }: { accounts: A
           </tbody>
         </table>
       </div>
-      {transfers.length === 0 ? <EmptyTableMessage text="Aun no hay transferencias registradas." /> : null}
+      {transfers.length === 0 ? <EmptyTableMessage text="Aún no hay transferencias registradas." /> : null}
     </div>
   );
 }
@@ -1098,7 +1106,7 @@ function UpcomingGoals({
 }) {
   return (
     <div className="mt-4 min-w-0 rounded-md border border-slate-200 p-4">
-      <h3 className="font-semibold text-slate-950">Proximas metas por fecha objetivo</h3>
+      <h3 className="font-semibold text-slate-950">Próximas metas por fecha objetivo</h3>
       <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
         {goals.map(({ goal, currentAmount, progressPercent }) => (
           <div className="min-w-0 rounded-md bg-slate-50 p-3" key={goal.id}>
@@ -1113,7 +1121,7 @@ function UpcomingGoals({
           </div>
         ))}
       </div>
-      {goals.length === 0 ? <EmptyTableMessage text="Aun no hay metas activas con fecha objetivo." /> : null}
+      {goals.length === 0 ? <EmptyTableMessage text="Aún no hay metas activas con fecha objetivo." /> : null}
     </div>
   );
 }
@@ -1145,7 +1153,7 @@ function TopInvestmentsList({
           </div>
         ))}
       </div>
-      {rows.length === 0 ? <EmptyTableMessage text="Aun no hay inversiones manuales registradas." /> : null}
+      {rows.length === 0 ? <EmptyTableMessage text="Aún no hay inversiones manuales registradas." /> : null}
     </div>
   );
 }
@@ -1206,14 +1214,14 @@ function UpcomingCards({
                 {card.bank} - **** {card.last_four_digits}
               </p>
               <p className={`mt-2 text-sm font-medium ${days <= 3 ? "text-red-700" : "text-amber-700"}`}>
-                Faltan {days} dia(s)
+                {formatRemainingDays(days)}
               </p>
             </div>
           );
         })}
         {items.length === 0 ? (
           <p className="rounded-md bg-slate-50 p-4 text-sm text-slate-600">
-            No hay tarjetas proximas en los siguientes 7 dias.
+            No hay tarjetas próximas en los siguientes 7 días.
           </p>
         ) : null}
       </div>
