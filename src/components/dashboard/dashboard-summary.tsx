@@ -6,6 +6,7 @@ import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getPeriodFilterFromPreference, isMissingPreferencesTableError } from "@/lib/user-preferences";
 import {
   getDefaultPeriodFilter,
   getPeriodLabel,
@@ -29,6 +30,7 @@ import type {
   InvestmentPlatform,
   Payment,
   PaymentType,
+  UserPreference,
 } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -100,6 +102,20 @@ export function DashboardSummary() {
     }
 
     setIsLoading(true);
+    const { data: preferenceData, error: preferenceError } = await supabase
+      .from("user_preferences")
+      .select("default_dashboard_period")
+      .eq("user_id", userData.user.id)
+      .maybeSingle<Pick<UserPreference, "default_dashboard_period">>();
+
+    if (preferenceData?.default_dashboard_period) {
+      setPeriodFilter(getPeriodFilterFromPreference(preferenceData.default_dashboard_period));
+    }
+
+    if (preferenceError && !isMissingPreferencesTableError(preferenceError.message)) {
+      setMessage({ type: "info", text: "No pude cargar tus preferencias, pero el Dashboard sigue disponible." });
+    }
+
     const [
       { data: cardData, error: cardError },
       { data: expenseData, error: expenseError },

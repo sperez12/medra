@@ -227,3 +227,17 @@ export type ManualExchangeRate = {
   notes: string | null;
   created_at: string;
 };
+
+export type UserDashboardPeriodPreference = "current_period" | "current_month" | "previous_month";
+export type UserDateFormatPreference = "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
+
+export type UserPreference = {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  preferred_currency: CurrencyCode | string;
+  date_format: UserDateFormatPreference;
+  default_dashboard_period: UserDashboardPeriodPreference;
+  created_at: string;
+  updated_at: string;
+};

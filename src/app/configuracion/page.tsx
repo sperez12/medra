@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { UserPreferencesForm } from "@/components/settings/user-preferences-form";
 
 export default function SettingsPage() {
   return (
@@ -10,6 +11,8 @@ export default function SettingsPage() {
             Estado general de la app y proximos ajustes disponibles.
           </p>
         </section>
+
+        <UserPreferencesForm />
 
         <section className="grid gap-4 md:grid-cols-2">
           <InfoCard
@@ -26,7 +29,7 @@ export default function SettingsPage() {
           />
           <InfoCard
             title="Configuracion avanzada"
-            description="Perfil, preferencias y tipo de cambio automatico se agregaran en una fase futura."
+            description="Tipo de cambio automatico y preferencias mas avanzadas se agregaran en una fase futura."
           />
         </section>
       </div>
