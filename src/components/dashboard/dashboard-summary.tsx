@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
-import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { DEFAULT_CURRENCY, formatCurrency, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserPreferences } from "@/lib/use-user-preferences";
@@ -64,6 +64,13 @@ type DashboardCardSummary = {
   usagePercent: number;
   daysToCut: number;
   daysToPayment: number;
+};
+
+type FinancialAlert = {
+  id: string;
+  title: string;
+  description: string;
+  tone: "info" | "warning" | "danger";
 };
 
 export function DashboardSummary() {
@@ -328,6 +335,12 @@ export function DashboardSummary() {
       max: Math.max(spent, paid, pending, available, 1),
     };
   });
+  const financialAlerts = buildFinancialAlerts({
+    accountSummaries: activeAccountSummaries,
+    assets: investmentAssets,
+    budgetSummaries: currentBudgetSummaries,
+    cardSummaries,
+  });
 
   if (isLoading) {
     return <StatusPanel text="Cargando dashboard..." />;
@@ -374,6 +387,8 @@ export function DashboardSummary() {
         <SmallStat label="Proximas a corte" value={cardsNearCut.length} />
         <SmallStat label="Proximas a pago" value={cardsNearPayment.length} />
       </section>
+
+      <FinancialAlertsPreview alerts={financialAlerts} />
 
       <section className="pp-card p-5 sm:p-6">
         <div className="flex flex-col gap-1">
@@ -620,6 +635,89 @@ function buildNetWorthByCurrency(
   });
 }
 
+function buildFinancialAlerts({
+  accountSummaries,
+  assets,
+  budgetSummaries,
+  cardSummaries,
+}: {
+  accountSummaries: Array<{ account: Account; balance: number }>;
+  assets: InvestmentAsset[];
+  budgetSummaries: Array<{ budget: Budget; spent: number; status: string }>;
+  cardSummaries: DashboardCardSummary[];
+}) {
+  const alerts: FinancialAlert[] = [];
+
+  cardSummaries
+    .filter((summary) => summary.pending > 0 && summary.daysToPayment <= 5)
+    .sort((a, b) => a.daysToPayment - b.daysToPayment)
+    .slice(0, 2)
+    .forEach((summary) => {
+      alerts.push({
+        id: `card-payment-${summary.card.id}`,
+        title: "Pago de tarjeta proximo",
+        description: `${summary.card.name} vence en ${summary.daysToPayment} dia(s). Saldo pendiente estimado: ${formatCurrency(summary.pending, summary.card.currency)}.`,
+        tone: summary.daysToPayment <= 2 ? "danger" : "warning",
+      });
+    });
+
+  budgetSummaries
+    .map((summary) => {
+      const limit = Number(summary.budget.amount);
+      const percent = limit > 0 ? (summary.spent / limit) * 100 : 0;
+      return { ...summary, percent };
+    })
+    .filter((summary) => summary.percent >= 80)
+    .sort((a, b) => b.percent - a.percent)
+    .slice(0, 2)
+    .forEach((summary) => {
+      alerts.push({
+        id: `budget-${summary.budget.id}`,
+        title: summary.percent >= 100 ? "Presupuesto excedido" : "Presupuesto cerca del limite",
+        description: `${summary.budget.name} lleva ${summary.percent.toFixed(0)}% usado este mes.`,
+        tone: summary.percent >= 100 ? "danger" : "warning",
+      });
+    });
+
+  accountSummaries
+    .filter((summary) => summary.balance <= 0)
+    .slice(0, 2)
+    .forEach((summary) => {
+      alerts.push({
+        id: `account-${summary.account.id}`,
+        title: "Cuenta con saldo bajo",
+        description: `${summary.account.name} tiene saldo estimado ${formatCurrency(summary.balance, summary.account.currency)}.`,
+        tone: "warning",
+      });
+    });
+
+  assets
+    .filter((asset) => asset.is_active && asset.price_provider !== "manual")
+    .map((asset) => ({ asset, status: getAssetPriceAlertStatus(asset) }))
+    .filter((item) => item.status !== null)
+    .slice(0, 2)
+    .forEach(({ asset, status }) => {
+      alerts.push({
+        id: `asset-${asset.id}`,
+        title: status === "error" ? "Precio de activo con error" : "Precio de activo pendiente",
+        description: `${asset.symbol} usa precio automatico y ${status === "old" ? "no se actualiza desde hace mas de 7 dias" : status === "missing" ? "aun no tiene fecha de actualizacion" : "tiene un error reciente"}.`,
+        tone: status === "error" ? "danger" : "info",
+      });
+    });
+
+  return alerts.slice(0, 6);
+}
+
+function getAssetPriceAlertStatus(asset: InvestmentAsset) {
+  if (asset.last_price_error) return "error";
+  if (!asset.last_price_updated_at) return "missing";
+
+  const lastUpdatedAt = new Date(asset.last_price_updated_at).getTime();
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  return lastUpdatedAt < sevenDaysAgo ? "old" : null;
+}
+
 function buildBudgetDashboardSummary(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]) {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
@@ -791,6 +889,40 @@ function CardHighlight({
       </div>
     </div>
   );
+}
+
+function FinancialAlertsPreview({ alerts }: { alerts: FinancialAlert[] }) {
+  return (
+    <section className="pp-card p-5 sm:p-6">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="text-lg font-semibold text-slate-950">Atencion financiera</h2>
+        <p className="text-sm text-slate-600">
+          Alertas sugeridas con tus datos actuales. No se guardan ni envian notificaciones.
+        </p>
+      </div>
+
+      {alerts.length === 0 ? (
+        <p className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
+          No hay alertas importantes por ahora.
+        </p>
+      ) : (
+        <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
+          {alerts.map((alert) => (
+            <article className={`min-w-0 rounded-xl border p-4 ${getAlertToneClass(alert.tone)}`} key={alert.id}>
+              <p className="font-semibold">{alert.title}</p>
+              <p className="mt-1 text-sm opacity-85">{alert.description}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function getAlertToneClass(tone: FinancialAlert["tone"]) {
+  if (tone === "danger") return "border-red-200 bg-red-50 text-red-800";
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-900";
+  return "border-blue-200 bg-blue-50 text-blue-800";
 }
 
 function CardCurrencySummary({
