@@ -4,6 +4,7 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -11,6 +12,7 @@ import {
   getRangeForCard,
   type PeriodFilterState,
 } from "@/lib/period-filters";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { CreditCard, Expense, Payment } from "@/types/finance";
 
 const emptyForm = {
@@ -32,6 +34,7 @@ type Message = {
 
 export function CardManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -44,6 +47,12 @@ export function CardManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -351,7 +360,7 @@ export function CardManager() {
                 <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
                   <p className="font-medium text-slate-700">Periodo actual</p>
                   <p className="mt-1">
-                    {period.start.toLocaleDateString("es-MX")} a {period.end.toLocaleDateString("es-MX")}
+                    {formatDateForPreference(period.start, dateFormat)} a {formatDateForPreference(period.end, dateFormat)}
                   </p>
                 </div>
 

@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
@@ -34,6 +36,7 @@ type Message = {
 
 export function FinancialCalendar() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -136,7 +139,7 @@ export function FinancialCalendar() {
         <h2 className="text-lg font-semibold text-slate-950">Eventos</h2>
         <div className="mt-4 space-y-3">
           {events.map((event) => (
-            <EventItem event={event} key={event.id} />
+            <EventItem dateFormat={dateFormat} event={event} key={event.id} />
           ))}
         </div>
         {events.length === 0 ? (
@@ -280,7 +283,7 @@ function SummaryCard({
   );
 }
 
-function EventItem({ event }: { event: CalendarEvent }) {
+function EventItem({ dateFormat, event }: { dateFormat: string; event: CalendarEvent }) {
   const status = getEventStatus(event.date);
   const typeStyles = {
     card_cut: {
@@ -330,7 +333,7 @@ function EventItem({ event }: { event: CalendarEvent }) {
           <p className="mt-2 text-sm">{event.description}</p>
         </div>
         <div className="text-left sm:text-right">
-          <p className="font-semibold text-slate-950">{event.date.toLocaleDateString("es-MX")}</p>
+          <p className="font-semibold text-slate-950">{formatDateForPreference(event.date, dateFormat)}</p>
           {event.amount ? <p className="mt-1 text-sm text-slate-600"><MoneyAmount amount={event.amount} currency={event.currency} /></p> : null}
         </div>
       </div>

@@ -3,7 +3,9 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { Account, Goal, GoalContribution, GoalType } from "@/types/finance";
 
 const goalTypeLabels: Record<GoalType, string> = {
@@ -53,6 +55,7 @@ type GoalSummary = {
 
 export function GoalManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [contributions, setContributions] = useState<GoalContribution[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -66,6 +69,12 @@ export function GoalManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setGoalForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -419,7 +428,7 @@ export function GoalManager() {
           {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando metas...</p> : null}
           <div className="mt-4 grid min-w-0 gap-4">
             {goalSummaries.map((summary) => (
-              <GoalCard accounts={accounts} key={summary.goal.id} onDelete={deleteGoal} onEdit={startEditGoal} summary={summary} />
+              <GoalCard accounts={accounts} dateFormat={dateFormat} key={summary.goal.id} onDelete={deleteGoal} onEdit={startEditGoal} summary={summary} />
             ))}
           </div>
           {!isLoading && goalSummaries.length === 0 ? <EmptyMessage text="Todavia no hay metas. Empieza con una meta sencilla, por ejemplo fondo de emergencia, viaje o pago de deuda." /> : null}
@@ -438,6 +447,7 @@ export function GoalManager() {
         />
         <RecentContributions
           accounts={accounts}
+          dateFormat={dateFormat}
           contributions={recentContributions}
           goals={goals}
           onDelete={deleteContribution}
@@ -565,7 +575,7 @@ function ContributionForm({
   );
 }
 
-function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]; summary: GoalSummary; onEdit: (goal: Goal) => void; onDelete: (goal: Goal) => void }) {
+function GoalCard({ accounts, dateFormat, summary, onEdit, onDelete }: { accounts: Account[]; dateFormat: string; summary: GoalSummary; onEdit: (goal: Goal) => void; onDelete: (goal: Goal) => void }) {
   const { goal, currentAmount, remaining, progressPercent, isCompleted, daysUntilTarget, isNearTargetDate, isOverdue } = summary;
 
   return (
@@ -577,7 +587,7 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
           <p className="mt-1 text-sm text-slate-500">Cuenta: {getAccountName(accounts, goal.account_id)}</p>
           {goal.target_date ? (
             <p className="text-sm text-slate-500">
-              Fecha objetivo: {formatDate(goal.target_date)} {daysUntilTarget !== null ? `(${formatTargetDays(daysUntilTarget)})` : ""}
+              Fecha objetivo: {formatDate(goal.target_date, dateFormat)} {daysUntilTarget !== null ? `(${formatTargetDays(daysUntilTarget)})` : ""}
             </p>
           ) : (
             <p className="text-sm text-slate-500">Sin fecha objetivo</p>
@@ -618,12 +628,14 @@ function GoalCard({ accounts, summary, onEdit, onDelete }: { accounts: Account[]
 
 function RecentContributions({
   accounts,
+  dateFormat,
   contributions,
   goals,
   onDelete,
   onEdit,
 }: {
   accounts: Account[];
+  dateFormat: string;
   contributions: GoalContribution[];
   goals: Goal[];
   onDelete: (contribution: GoalContribution) => void;
@@ -649,7 +661,7 @@ function RecentContributions({
               const goal = goals.find((item) => item.id === contribution.goal_id);
               return (
                 <tr className="border-b border-slate-100" key={contribution.id}>
-                  <td className="py-3 pr-4 text-slate-700">{formatDate(contribution.contribution_date)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(contribution.contribution_date, dateFormat)}</td>
                   <td className="py-3 pr-4 text-slate-700">{goal?.name ?? "Meta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{getAccountName(accounts, contribution.account_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{contribution.description || "Sin descripcion"}</td>
@@ -769,8 +781,8 @@ function formatTargetDays(days: number) {
   return `${Math.abs(days)} dia(s) vencida`;
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+function formatDate(dateValue: string, dateFormat?: string) {
+  return formatDateForPreference(dateValue, dateFormat);
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {

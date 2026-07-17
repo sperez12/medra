@@ -3,7 +3,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference, formatDateTimeForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type {
   Holding,
   InvestmentAsset,
@@ -123,6 +125,7 @@ type HoldingSummary = {
 
 export function InvestmentManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [platforms, setPlatforms] = useState<InvestmentPlatform[]>([]);
   const [assets, setAssets] = useState<InvestmentAsset[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
@@ -144,6 +147,13 @@ export function InvestmentManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setPlatformForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+      setAssetForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -583,12 +593,14 @@ export function InvestmentManager() {
 
       <section className="grid min-w-0 gap-6 xl:grid-cols-2">
         <HoldingsTable
+          dateFormat={dateFormat}
           rows={holdingSummaries}
           onEdit={(holding) => startEditHolding(holding)}
           onDelete={(holding) => deleteRow("holdings", holding.id, "este holding", "Holding borrado. El valor total fue recalculado.")}
         />
         <AssetsTable
           assets={assets}
+          dateFormat={dateFormat}
           isUpdatingPrices={Boolean(updatingPriceGroup)}
           updatingAssetId={updatingAssetId}
           onEdit={(asset) => startEditAsset(asset)}
@@ -605,6 +617,7 @@ export function InvestmentManager() {
 
       <TransactionsTable
         assets={assets}
+        dateFormat={dateFormat}
         platforms={platforms}
         transactions={recentTransactions}
         onEdit={(transaction) => startEditTransaction(transaction)}
@@ -889,7 +902,7 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
   );
 }
 
-function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
+function HoldingsTable({ dateFormat, rows, onEdit, onDelete }: { dateFormat: string; rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
   return (
     <TableCard title="Holdings">
       <table className="w-full min-w-[1120px] text-left text-sm">
@@ -903,7 +916,7 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
               <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : <MoneyAmount amount={Number(holding.average_cost)} currency={asset?.currency} />}</td>
               <td className="py-3 pr-4"><MoneyAmount amount={Number(asset?.current_price ?? 0)} currency={asset?.currency} /></td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
-              <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
+              <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at, dateFormat) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset?.last_price_error} /></td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
               <td className="py-3 text-right font-semibold"><MoneyAmount amount={value} currency={asset?.currency} /></td>
@@ -919,6 +932,7 @@ function HoldingsTable({ rows, onEdit, onDelete }: { rows: HoldingSummary[]; onE
 
 function AssetsTable({
   assets,
+  dateFormat,
   isUpdatingPrices,
   updatingAssetId,
   onEdit,
@@ -926,6 +940,7 @@ function AssetsTable({
   onUpdate,
 }: {
   assets: InvestmentAsset[];
+  dateFormat: string;
   isUpdatingPrices: boolean;
   updatingAssetId: string | null;
   onEdit: (asset: InvestmentAsset) => void;
@@ -944,7 +959,7 @@ function AssetsTable({
               <td className="py-3 pr-4">{assetTypeLabels[asset.asset_type]}</td>
               <td className="py-3 pr-4"><MoneyAmount amount={Number(asset.current_price)} currency={asset.currency} /></td>
               <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
-              <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at) : "Sin actualizacion"}</td>
+              <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at, dateFormat) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset.last_price_error} /></td>
               <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
               <td className="py-3 pr-4">
@@ -971,8 +986,9 @@ function AssetsTable({
   );
 }
 
-function TransactionsTable({ assets, platforms, transactions, onEdit, onDelete }: {
+function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit, onDelete }: {
   assets: InvestmentAsset[];
+  dateFormat: string;
   platforms: InvestmentPlatform[];
   transactions: InvestmentTransaction[];
   onEdit: (transaction: InvestmentTransaction) => void;
@@ -987,7 +1003,7 @@ function TransactionsTable({ assets, platforms, transactions, onEdit, onDelete }
             const asset = assets.find((item) => item.id === transaction.asset_id);
             return (
               <tr className="border-b border-slate-100" key={transaction.id}>
-                <td className="py-3 pr-4">{formatDate(transaction.transaction_date)}</td>
+                <td className="py-3 pr-4">{formatDate(transaction.transaction_date, dateFormat)}</td>
                 <td className="py-3 pr-4">{platforms.find((item) => item.id === transaction.platform_id)?.name ?? "Plataforma no encontrada"}</td>
                 <td className="py-3 pr-4">{asset?.symbol ?? "Activo no encontrado"}</td>
                 <td className="py-3 pr-4">{transactionTypeLabels[transaction.transaction_type]}</td>
@@ -1207,12 +1223,12 @@ function getFriendlyInvestmentError(error: string) {
   return `No se pudo completar la accion. Detalle: ${error}`;
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+function formatDate(dateValue: string, dateFormat?: string) {
+  return formatDateForPreference(dateValue, dateFormat);
 }
 
-function formatDateTime(dateValue: string) {
-  return new Date(dateValue).toLocaleString("es-MX");
+function formatDateTime(dateValue: string, dateFormat?: string) {
+  return formatDateTimeForPreference(dateValue, dateFormat);
 }
 
 function getPriceSourceLabel(asset: InvestmentAsset | undefined) {

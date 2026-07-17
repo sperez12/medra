@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import {
   getDefaultPeriodFilter,
   getPeriodLabel,
@@ -109,6 +111,7 @@ type SupabaseErrorLike = {
 
 export function BasicReports() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -139,6 +142,13 @@ export function BasicReports() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
+      setExchangeRateForm((currentForm) => currentForm.to_currency === DEFAULT_CURRENCY ? { ...currentForm, to_currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -332,7 +342,7 @@ export function BasicReports() {
     setMessage(null);
     if (!supabase) return;
     const confirmed = window.confirm(
-      `Vas a borrar el snapshot de ${snapshot.currency} del ${formatDate(snapshot.snapshot_date)}.\n\nSeguro que quieres continuar?`
+      `Vas a borrar el snapshot de ${snapshot.currency} del ${formatDate(snapshot.snapshot_date, dateFormat)}.\n\nSeguro que quieres continuar?`
     );
     if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun snapshot." });
 
@@ -413,7 +423,7 @@ export function BasicReports() {
     setMessage(null);
     if (!supabase) return;
     const confirmed = window.confirm(
-      `Vas a borrar el tipo de cambio ${rate.from_currency} -> ${rate.to_currency} del ${formatDate(rate.rate_date)}.\n\nEsto solo afecta reportes visuales, no tus saldos originales.`
+      `Vas a borrar el tipo de cambio ${rate.from_currency} -> ${rate.to_currency} del ${formatDate(rate.rate_date, dateFormat)}.\n\nEsto solo afecta reportes visuales, no tus saldos originales.`
     );
     if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun tipo de cambio." });
 
@@ -503,14 +513,15 @@ export function BasicReports() {
         </div>
 
         <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-2">
-          <SnapshotHistoryBars rows={snapshotHistoryRows} />
-          <SnapshotsTable snapshots={snapshots.slice(0, 12)} onDelete={deleteSnapshot} />
+          <SnapshotHistoryBars dateFormat={dateFormat} rows={snapshotHistoryRows} />
+          <SnapshotsTable dateFormat={dateFormat} snapshots={snapshots.slice(0, 12)} onDelete={deleteSnapshot} />
         </div>
       </section>
 
       <section className="min-w-0 scroll-mt-24" id="patrimonio-consolidado">
         <ConsolidatedNetWorthSection
           baseCurrency={baseCurrency}
+          dateFormat={dateFormat}
           onBaseCurrencyChange={setBaseCurrency}
           result={consolidatedNetWorth}
         />
@@ -526,6 +537,7 @@ export function BasicReports() {
           onDelete={deleteExchangeRate}
           onEdit={startEditingExchangeRate}
           onSave={saveExchangeRate}
+          dateFormat={dateFormat}
           rates={exchangeRates.slice(0, 8)}
         />
       </section>
@@ -553,10 +565,10 @@ export function BasicReports() {
             </div>
             <p className="mt-2 text-sm text-slate-500">Calculado sobre el periodo seleccionado.</p>
           </div>
-          <HighestExpensesTable expenses={highestExpenses} cards={cards} categories={categories} />
+          <HighestExpensesTable dateFormat={dateFormat} expenses={highestExpenses} cards={cards} categories={categories} />
         </div>
 
-        <RecentPaymentsTable payments={recentPayments} cards={cards} />
+        <RecentPaymentsTable dateFormat={dateFormat} payments={recentPayments} cards={cards} />
       </section>
     </div>
   );
@@ -1015,8 +1027,10 @@ function NetWorthPreviewCard({ row }: { row: NetWorthSnapshotRow }) {
 }
 
 function SnapshotHistoryBars({
+  dateFormat,
   rows,
 }: {
+  dateFormat: string;
   rows: SnapshotHistoryRow[];
 }) {
   return (
@@ -1045,14 +1059,14 @@ function SnapshotHistoryBars({
                 {row.lastSnapshot ? (
                   <div className="min-w-0 text-sm sm:text-right">
                     <p className="font-semibold text-slate-950"><MoneyAmount amount={Number(row.lastSnapshot.net_worth)} currency={row.currency} /></p>
-                    <p className="text-xs text-slate-500">Ultimo: {formatDate(row.lastSnapshot.snapshot_date)}</p>
+                    <p className="text-xs text-slate-500">Ultimo: {formatDate(row.lastSnapshot.snapshot_date, dateFormat)}</p>
                   </div>
                 ) : null}
               </div>
               {row.snapshots.map((snapshot) => (
                 <div key={snapshot.id}>
                   <div className="flex min-w-0 flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                    <span>{formatDate(snapshot.snapshot_date)}</span>
+                    <span>{formatDate(snapshot.snapshot_date, dateFormat)}</span>
                     <span className="break-words font-medium text-slate-900"><MoneyAmount amount={Number(snapshot.net_worth)} currency={snapshot.currency} /></span>
                   </div>
                   <div className="mt-1 h-2 w-full max-w-full rounded-full bg-slate-100">
@@ -1074,7 +1088,7 @@ function SnapshotHistoryBars({
   );
 }
 
-function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]; onDelete: (snapshot: NetWorthSnapshot) => void }) {
+function SnapshotsTable({ dateFormat, snapshots, onDelete }: { dateFormat: string; snapshots: NetWorthSnapshot[]; onDelete: (snapshot: NetWorthSnapshot) => void }) {
   if (snapshots.length === 0) {
     return (
       <div className="min-w-0 rounded-md border border-slate-200 p-4">
@@ -1104,7 +1118,7 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
           <tbody>
             {snapshots.map((snapshot) => (
               <tr className="border-b border-slate-100" key={snapshot.id}>
-                <td className="py-3 pr-3 text-slate-700">{formatDate(snapshot.snapshot_date)}</td>
+                <td className="py-3 pr-3 text-slate-700">{formatDate(snapshot.snapshot_date, dateFormat)}</td>
                 <td className="py-3 pr-3">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{snapshot.currency}</span>
                 </td>
@@ -1129,10 +1143,12 @@ function SnapshotsTable({ snapshots, onDelete }: { snapshots: NetWorthSnapshot[]
 
 function ConsolidatedNetWorthSection({
   baseCurrency,
+  dateFormat,
   onBaseCurrencyChange,
   result,
 }: {
   baseCurrency: string;
+  dateFormat: string;
   onBaseCurrencyChange: (currency: string) => void;
   result: ConsolidatedNetWorthResult;
 }) {
@@ -1183,7 +1199,7 @@ function ConsolidatedNetWorthSection({
                     <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                     <p className="text-xs text-slate-500">
                       {row.rate
-                        ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date)}`
+                        ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date, dateFormat)}`
                         : "Sin conversion: ya esta en la moneda base"}
                     </p>
                   </>
@@ -1244,7 +1260,7 @@ function ConsolidatedNetWorthSection({
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-slate-950">{row.currency}</p>
                       <p className="text-sm text-slate-600">
-                        Snapshot {row.sourceDate ? formatDate(row.sourceDate) : "sin fecha"}: <MoneyAmount amount={row.originalAmount} currency={row.currency} />
+                        Snapshot {row.sourceDate ? formatDate(row.sourceDate, dateFormat) : "sin fecha"}: <MoneyAmount amount={row.originalAmount} currency={row.currency} />
                       </p>
                     </div>
                     <div className="min-w-0 text-sm sm:text-right">
@@ -1255,7 +1271,7 @@ function ConsolidatedNetWorthSection({
                           <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                           <p className="text-xs text-slate-500">
                             {row.rate
-                              ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date)}`
+                              ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date, dateFormat)}`
                               : "Sin conversion: ya esta en la moneda base"}
                           </p>
                         </>
@@ -1273,6 +1289,7 @@ function ConsolidatedNetWorthSection({
 }
 
 function ExchangeRatesSection({
+  dateFormat,
   editingRateId,
   form,
   isSaving,
@@ -1283,6 +1300,7 @@ function ExchangeRatesSection({
   onSave,
   rates,
 }: {
+  dateFormat: string;
   editingRateId: string | null;
   form: ExchangeRateForm;
   isSaving: boolean;
@@ -1375,7 +1393,7 @@ function ExchangeRatesSection({
             <div className="min-w-0 rounded-md border border-slate-200 p-3" key={rate.id}>
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date)}</p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date, dateFormat)}</p>
                   <p className="mt-1 text-sm font-semibold text-slate-950">
                     {`${rate.from_currency} -> ${rate.to_currency}`}
                   </p>
@@ -1475,10 +1493,12 @@ function ComparisonBar({ label, value, max, currency, colorClass }: { label: str
 }
 
 function HighestExpensesTable({
+  dateFormat,
   expenses,
   cards,
   categories,
 }: {
+  dateFormat: string;
   expenses: Expense[];
   cards: CreditCard[];
   categories: Category[];
@@ -1500,7 +1520,7 @@ function HighestExpensesTable({
           <tbody>
             {expenses.map((expense) => (
               <tr className="border-b border-slate-100" key={expense.id}>
-                <td className="py-3 pr-4 text-slate-700">{formatDate(expense.expense_date)}</td>
+                <td className="py-3 pr-4 text-slate-700">{formatDate(expense.expense_date, dateFormat)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
@@ -1515,7 +1535,7 @@ function HighestExpensesTable({
   );
 }
 
-function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: CreditCard[] }) {
+function RecentPaymentsTable({ dateFormat, payments, cards }: { dateFormat: string; payments: Payment[]; cards: CreditCard[] }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Pagos recientes</h2>
@@ -1533,7 +1553,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
           <tbody>
             {payments.map((payment) => (
               <tr className="border-b border-slate-100" key={payment.id}>
-                <td className="py-3 pr-4 text-slate-700">{formatDate(payment.payment_date)}</td>
+                <td className="py-3 pr-4 text-slate-700">{formatDate(payment.payment_date, dateFormat)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, payment.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
                 <td className="py-3 pr-4 text-slate-700">{payment.notes || "Sin descripcion"}</td>
@@ -1563,12 +1583,8 @@ function InlineMessage({ message }: { message: Message }) {
   return <div className={`rounded-md border px-4 py-3 text-sm ${styles}`}>{message.text}</div>;
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
+function formatDate(dateValue: string, dateFormat?: string) {
+  return formatDateForPreference(dateValue, dateFormat);
 }
 
 function formatPercentChange(value: number) {

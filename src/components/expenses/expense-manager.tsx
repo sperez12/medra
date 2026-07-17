@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
+import { formatDateForPreference } from "@/lib/date-format";
 import {
   getDefaultPeriodFilter,
   getPeriodLabel,
@@ -12,6 +13,7 @@ import {
 import { DEFAULT_CURRENCY, formatCurrency } from "@/lib/currencies";
 import { DEFAULT_EXPENSE_CATEGORY_NAMES, dedupeCategories } from "@/lib/categories";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { Category, CreditCard, Expense } from "@/types/finance";
 
 const emptyForm = {
@@ -32,6 +34,7 @@ type Message = {
 
 export function ExpenseManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -431,7 +434,7 @@ export function ExpenseManager() {
               {filteredExpenses.map((expense) => (
                 <tr className="border-b border-slate-100" key={expense.id}>
                   <td className="py-3 pr-4 text-slate-700">
-                    {new Date(`${expense.expense_date}T00:00:00`).toLocaleDateString("es-MX")}
+                    {formatDateForPreference(expense.expense_date, dateFormat)}
                   </td>
                   <td className="py-3 pr-4 text-slate-700">{getCardName(expense.credit_card_id)}</td>
                   <td className="py-3 pr-4 text-slate-700">{getCategoryName(expense.category_id)}</td>

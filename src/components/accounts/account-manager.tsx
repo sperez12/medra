@@ -3,7 +3,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, formatCurrency, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { Account, AccountMovement, AccountMovementType, AccountTransfer, AccountType } from "@/types/finance";
 
 const accountTypeLabels: Record<AccountType, string> = {
@@ -56,6 +58,7 @@ type Message = {
 
 export function AccountManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [movements, setMovements] = useState<AccountMovement[]>([]);
   const [transfers, setTransfers] = useState<AccountTransfer[]>([]);
@@ -70,6 +73,12 @@ export function AccountManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setAccountForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -547,12 +556,12 @@ export function AccountManager() {
           onChange={setTransferForm}
           onSubmit={handleTransferSubmit}
         />
-        <RecentTransfers accounts={accounts} transfers={recentTransfers} onDelete={deleteTransfer} onEdit={startEditTransfer} />
+        <RecentTransfers accounts={accounts} dateFormat={dateFormat} transfers={recentTransfers} onDelete={deleteTransfer} onEdit={startEditTransfer} />
       </section>
 
       <section className="grid min-w-0 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
         <MovementForm accounts={accounts} form={movementForm} onChange={setMovementForm} onSubmit={handleMovementSubmit} />
-        <RecentMovements accounts={accounts} movements={recentMovements} />
+        <RecentMovements accounts={accounts} dateFormat={dateFormat} movements={recentMovements} />
       </section>
 
       {message ? <StatusMessage message={message} /> : null}
@@ -730,11 +739,13 @@ function MovementForm({
 
 function RecentTransfers({
   accounts,
+  dateFormat,
   transfers,
   onDelete,
   onEdit,
 }: {
   accounts: Account[];
+  dateFormat: string;
   transfers: AccountTransfer[];
   onDelete: (transfer: AccountTransfer) => void;
   onEdit: (transfer: AccountTransfer) => void;
@@ -760,7 +771,7 @@ function RecentTransfers({
               const toAccount = getAccountById(accounts, transfer.to_account_id);
               return (
                 <tr className="border-b border-slate-100" key={transfer.id}>
-                  <td className="py-3 pr-4 text-slate-700">{formatDate(transfer.transfer_date)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(transfer.transfer_date, dateFormat)}</td>
                   <td className="py-3 pr-4 text-slate-700">{fromAccount?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{toAccount?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">{transfer.description || "Sin descripcion"}</td>
@@ -786,7 +797,7 @@ function RecentTransfers({
   );
 }
 
-function RecentMovements({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
+function RecentMovements({ accounts, dateFormat, movements }: { accounts: Account[]; dateFormat: string; movements: AccountMovement[] }) {
   return (
     <div className="min-w-0 max-w-full rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <h2 className="text-lg font-semibold text-slate-950">Ultimos movimientos</h2>
@@ -806,7 +817,7 @@ function RecentMovements({ accounts, movements }: { accounts: Account[]; movemen
               const account = getAccountById(accounts, movement.account_id);
               return (
                 <tr className="border-b border-slate-100" key={movement.id}>
-                  <td className="py-3 pr-4 text-slate-700">{formatDate(movement.movement_date)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(movement.movement_date, dateFormat)}</td>
                   <td className="py-3 pr-4 text-slate-700">{account?.name ?? "Cuenta no encontrada"}</td>
                   <td className="py-3 pr-4 text-slate-700">
                     {movementTypeLabels[movement.movement_type]}
@@ -994,6 +1005,6 @@ function StatusMessage({ message }: { message: Message }) {
   return <p className={`rounded-md border px-3 py-2 text-sm ${styles[message.type]}`}>{message.text}</p>;
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+function formatDate(dateValue: string, dateFormat?: string) {
+  return formatDateForPreference(dateValue, dateFormat);
 }

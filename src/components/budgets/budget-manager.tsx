@@ -4,7 +4,9 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { dedupeCategories, findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { Budget, Category, CreditCard, Expense } from "@/types/finance";
 
 const emptyForm = {
@@ -33,6 +35,7 @@ type BudgetSummary = {
 
 export function BudgetManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
@@ -46,6 +49,12 @@ export function BudgetManager() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (preferencesLoaded) {
+      setForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+    }
+  }, [preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -231,7 +240,7 @@ export function BudgetManager() {
           {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando presupuestos...</p> : null}
           <div className="mt-4 grid gap-4">
             {budgetSummaries.map((summary) => (
-              <BudgetCard key={summary.budget.id} onDelete={deleteBudget} onEdit={startEditBudget} summary={summary} />
+              <BudgetCard dateFormat={dateFormat} key={summary.budget.id} onDelete={deleteBudget} onEdit={startEditBudget} summary={summary} />
             ))}
           </div>
           {!isLoading && budgetSummaries.length === 0 ? (
@@ -307,7 +316,7 @@ function BudgetForm({
   );
 }
 
-function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onEdit: (budget: Budget) => void; onDelete: (budget: Budget) => void }) {
+function BudgetCard({ dateFormat, summary, onEdit, onDelete }: { dateFormat: string; summary: BudgetSummary; onEdit: (budget: Budget) => void; onDelete: (budget: Budget) => void }) {
   const { budget, categoryName, spent, remaining, usedPercent, status } = summary;
   const statusData = getBudgetStatusData(status);
 
@@ -316,7 +325,7 @@ function BudgetCard({ summary, onEdit, onDelete }: { summary: BudgetSummary; onE
       <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h3 className="font-semibold text-slate-950">{budget.name}</h3>
-          <p className="text-sm text-slate-500">{categoryName} - {formatBudgetMonth(budget.month)}</p>
+          <p className="text-sm text-slate-500">{categoryName} - {formatBudgetMonth(budget.month, dateFormat)}</p>
           {budget.description ? <p className="mt-2 text-sm text-slate-600">{budget.description}</p> : null}
         </div>
         <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${budget.is_active ? "border-teal-200 bg-teal-50 text-teal-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
@@ -433,11 +442,8 @@ function getFriendlyBudgetError(error: string) {
   return `No se pudo completar la accion. Detalle: ${error}`;
 }
 
-function formatBudgetMonth(month: string) {
-  return new Date(`${month.slice(0, 7)}-01T00:00:00`).toLocaleDateString("es-MX", {
-    month: "long",
-    year: "numeric",
-  });
+function formatBudgetMonth(month: string, dateFormat?: string) {
+  return formatDateForPreference(`${month.slice(0, 7)}-01`, dateFormat);
 }
 
 function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: number }> }) {

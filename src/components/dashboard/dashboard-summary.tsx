@@ -5,7 +5,9 @@ import { MoneyAmount } from "@/components/ui/money-amount";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
+import { formatDateForPreference } from "@/lib/date-format";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { getPeriodFilterFromPreference, isMissingPreferencesTableError } from "@/lib/user-preferences";
 import {
   getDefaultPeriodFilter,
@@ -66,6 +68,7 @@ type DashboardCardSummary = {
 
 export function DashboardSummary() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { dateFormat } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -476,7 +479,7 @@ export function DashboardSummary() {
           <SummaryCard label="Completadas" value={String(completedGoalSummaries.length)} />
         </div>
         {activeGoalSummaries.length > 0 ? (
-          <UpcomingGoals goals={upcomingGoals} />
+          <UpcomingGoals dateFormat={dateFormat} goals={upcomingGoals} />
         ) : (
           <EmptyTableMessage text="Aun no hay metas activas. Cuando crees una meta, aqui veras su avance y fechas importantes." />
         )}
@@ -499,14 +502,15 @@ export function DashboardSummary() {
           <RecentExpensesTable
             categories={categories}
             cards={cards}
+            dateFormat={dateFormat}
             expenses={recentExpenses}
           />
-          <RecentPaymentsTable cards={cards} payments={recentPayments} />
+          <RecentPaymentsTable cards={cards} dateFormat={dateFormat} payments={recentPayments} />
         </div>
 
         <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
-          <RecentAccountMovementsTable accounts={accounts} movements={recentAccountMovements} />
-          <RecentTransfersTable accounts={accounts} transfers={recentAccountTransfers} />
+          <RecentAccountMovementsTable accounts={accounts} dateFormat={dateFormat} movements={recentAccountMovements} />
+          <RecentTransfersTable accounts={accounts} dateFormat={dateFormat} transfers={recentAccountTransfers} />
         </div>
       </section>
     </div>
@@ -561,8 +565,8 @@ function getCategoryName(categories: Category[], categoryId: string | null) {
   return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
 }
 
-function formatDate(dateValue: string) {
-  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX");
+function formatDate(dateValue: string, dateFormat?: string) {
+  return formatDateForPreference(dateValue, dateFormat);
 }
 
 function getCardCurrency(cards: CreditCard[], cardId: string | null) {
@@ -944,7 +948,7 @@ function TopAccountsList({ accounts }: { accounts: Array<{ account: Account; bal
   );
 }
 
-function RecentAccountMovementsTable({ accounts, movements }: { accounts: Account[]; movements: AccountMovement[] }) {
+function RecentAccountMovementsTable({ accounts, dateFormat, movements }: { accounts: Account[]; dateFormat: string; movements: AccountMovement[] }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Ultimos movimientos</h3>
@@ -961,7 +965,7 @@ function RecentAccountMovementsTable({ accounts, movements }: { accounts: Accoun
           <tbody>
             {movements.map((movement) => (
               <tr className="border-b border-slate-100" key={movement.id}>
-                <td className="py-3 pr-3 text-slate-700">{formatDate(movement.movement_date)}</td>
+                <td className="py-3 pr-3 text-slate-700">{formatDate(movement.movement_date, dateFormat)}</td>
                 <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, movement.account_id)}</td>
                 <td className="py-3 pr-3 text-slate-700">
                   {movementTypeLabels[movement.movement_type]}
@@ -978,7 +982,7 @@ function RecentAccountMovementsTable({ accounts, movements }: { accounts: Accoun
   );
 }
 
-function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; transfers: AccountTransfer[] }) {
+function RecentTransfersTable({ accounts, dateFormat, transfers }: { accounts: Account[]; dateFormat: string; transfers: AccountTransfer[] }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-200 p-4">
       <h3 className="font-semibold text-slate-950">Transferencias recientes</h3>
@@ -995,7 +999,7 @@ function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; tr
           <tbody>
             {transfers.map((transfer) => (
               <tr className="border-b border-slate-100" key={transfer.id}>
-                <td className="py-3 pr-3 text-slate-700">{formatDate(transfer.transfer_date)}</td>
+                <td className="py-3 pr-3 text-slate-700">{formatDate(transfer.transfer_date, dateFormat)}</td>
                 <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.from_account_id)}</td>
                 <td className="py-3 pr-3 text-slate-700">{getAccountName(accounts, transfer.to_account_id)}</td>
                 <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(transfer.amount)} currency={transfer.currency} /></td>
@@ -1010,8 +1014,10 @@ function RecentTransfersTable({ accounts, transfers }: { accounts: Account[]; tr
 }
 
 function UpcomingGoals({
+  dateFormat,
   goals,
 }: {
+  dateFormat: string;
   goals: Array<{
     goal: Goal;
     currentAmount: number;
@@ -1025,7 +1031,7 @@ function UpcomingGoals({
         {goals.map(({ goal, currentAmount, progressPercent }) => (
           <div className="min-w-0 rounded-md bg-slate-50 p-3" key={goal.id}>
             <p className="font-medium text-slate-950">{goal.name}</p>
-            <p className="text-sm text-slate-500">{goal.target_date ? formatDate(goal.target_date) : "Sin fecha"}</p>
+            <p className="text-sm text-slate-500">{goal.target_date ? formatDate(goal.target_date, dateFormat) : "Sin fecha"}</p>
             <p className="mt-2 text-sm text-slate-700">
               <MoneyAmount amount={currentAmount} currency={goal.currency} /> de <MoneyAmount amount={Number(goal.target_amount)} currency={goal.currency} />
             </p>
@@ -1144,13 +1150,15 @@ function UpcomingCards({
 }
 
 function RecentExpensesTable({
-  expenses,
   cards,
   categories,
+  dateFormat,
+  expenses,
 }: {
-  expenses: Expense[];
   cards: CreditCard[];
   categories: Category[];
+  dateFormat: string;
+  expenses: Expense[];
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -1170,7 +1178,7 @@ function RecentExpensesTable({
             {expenses.map((expense) => (
               <tr className="border-b border-slate-100" key={expense.id}>
                 <td className="py-3 pr-4 text-slate-700">
-                  {formatDate(expense.expense_date)}
+                  {formatDate(expense.expense_date, dateFormat)}
                 </td>
                 <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
@@ -1188,7 +1196,7 @@ function RecentExpensesTable({
   );
 }
 
-function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: CreditCard[] }) {
+function RecentPaymentsTable({ payments, cards, dateFormat }: { payments: Payment[]; cards: CreditCard[]; dateFormat: string }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">Pagos recientes</h2>
@@ -1207,7 +1215,7 @@ function RecentPaymentsTable({ payments, cards }: { payments: Payment[]; cards: 
             {payments.map((payment) => (
               <tr className="border-b border-slate-100" key={payment.id}>
                 <td className="py-3 pr-4 text-slate-700">
-                  {formatDate(payment.payment_date)}
+                  {formatDate(payment.payment_date, dateFormat)}
                 </td>
                 <td className="py-3 pr-4 text-slate-700">{getCardInfo(cards, payment.credit_card_id)}</td>
                 <td className="py-3 pr-4 text-slate-700">{paymentTypeLabels[payment.payment_type]}</td>
