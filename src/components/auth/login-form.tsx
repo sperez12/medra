@@ -8,29 +8,57 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const nextPath = getSafeNextPath(searchParams.get("next"));
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function redirectIfAuthenticated() {
       if (!supabase) {
+        if (isMounted) {
+          setIsCheckingSession(false);
+        }
+        return;
+      }
+
+      const [{ data: sessionData }, { data: userData }] = await Promise.all([
+        supabase.auth.getSession(),
+        supabase.auth.getUser(),
+      ]);
+
+      if (sessionData.session || userData.user) {
+        router.replace(nextPath);
+        return;
+      }
+
+      if (isMounted) {
         setIsCheckingSession(false);
-        return;
       }
-
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        router.replace("/");
-        return;
-      }
-
-      setIsCheckingSession(false);
     }
 
     redirectIfAuthenticated();
-  }, [router, supabase]);
+
+    if (!supabase) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        router.replace(nextPath);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [nextPath, router, supabase]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,7 +71,6 @@ export function LoginForm() {
       return;
     }
 
-    const nextPath = searchParams.get("next") ?? "/";
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -86,4 +113,12 @@ export function LoginForm() {
       {message ? <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-700">{message}</p> : null}
     </form>
   );
+}
+
+function getSafeNextPath(next: string | null) {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+
+  return next;
 }
