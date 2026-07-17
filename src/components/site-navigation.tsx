@@ -13,6 +13,7 @@ const sections = [
   { label: "Presupuestos", href: "/presupuestos" },
   { label: "Metas", href: "/metas" },
   { label: "Calendario", href: "/calendario" },
+  { label: "Alertas", href: "/alertas" },
   { label: "Reportes", href: "/reportes" },
   { label: "Configuracion", href: "/configuracion" },
 ];

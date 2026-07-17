@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { AlertPreferencesForm } from "@/components/settings/alert-preferences-form";
 import { UserPreferencesForm } from "@/components/settings/user-preferences-form";
 
 export default function SettingsPage() {
@@ -13,6 +14,7 @@ export default function SettingsPage() {
         </section>
 
         <UserPreferencesForm />
+        <AlertPreferencesForm />
 
         <section className="grid gap-4 md:grid-cols-2">
           <InfoCard

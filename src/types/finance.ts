@@ -241,3 +241,15 @@ export type UserPreference = {
   created_at: string;
   updated_at: string;
 };
+
+export type UserAlertPreference = {
+  id: string;
+  user_id: string;
+  card_payment_warning_days: number;
+  budget_warning_percent: number;
+  investment_stale_price_days: number;
+  low_balance_alert_enabled: boolean;
+  investment_price_alerts_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
