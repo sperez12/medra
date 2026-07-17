@@ -16,6 +16,7 @@ import {
   isDateInSelectedPeriod,
   type PeriodFilterState,
 } from "@/lib/period-filters";
+import { getCurrentCardPeriod } from "@/lib/periods";
 import type {
   Account,
   AccountMovement,
@@ -60,6 +61,7 @@ type DashboardCardSummary = {
   spent: number;
   paid: number;
   pending: number;
+  paymentAlertPending: number;
   available: number;
   usagePercent: number;
   daysToCut: number;
@@ -72,6 +74,8 @@ type FinancialAlert = {
   description: string;
   tone: "info" | "warning" | "danger";
 };
+
+const CARD_PAYMENT_ALERT_WINDOW_DAYS = 7;
 
 export function DashboardSummary() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -230,6 +234,10 @@ export function DashboardSummary() {
     const spent = sumExpensesForCardPeriod(expenses, card.id, period.start, period.end);
     const paid = sumPaymentsForCardPeriod(payments, card.id, period.start, period.end);
     const pending = Math.max(spent - paid, 0);
+    const currentCardPeriod = getCurrentCardPeriod(card.statement_cut_day);
+    const currentCardPeriodSpent = sumExpensesForCardPeriod(expenses, card.id, currentCardPeriod.start, currentCardPeriod.end);
+    const currentCardPeriodPaid = sumPaymentsForCardPeriod(payments, card.id, currentCardPeriod.start, currentCardPeriod.end);
+    const paymentAlertPending = Math.max(currentCardPeriodSpent - currentCardPeriodPaid, 0);
     const limit = Number(card.credit_limit);
     const available = Math.max(limit - pending, 0);
     const usagePercent = limit > 0 ? (pending / limit) * 100 : 0;
@@ -241,6 +249,7 @@ export function DashboardSummary() {
       spent,
       paid,
       pending,
+      paymentAlertPending,
       available,
       usagePercent,
       daysToCut,
@@ -551,20 +560,36 @@ function sumPaymentsForCardPeriod(payments: Payment[], cardId: string, start: Da
 }
 
 function getDaysUntilDay(day: number) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = startOfDay(new Date());
+  const target = getNextDateForDay(day, today);
 
-  const target = new Date(today.getFullYear(), today.getMonth(), Math.min(day, daysInMonth(today)));
-  if (target < today) {
-    target.setMonth(target.getMonth() + 1);
-    target.setDate(Math.min(day, daysInMonth(target)));
-  }
-
-  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+  return getDayDifference(today, target);
 }
 
-function daysInMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+function getNextDateForDay(day: number, fromDate = new Date()) {
+  const today = startOfDay(fromDate);
+  const currentMonthTarget = dateWithSafeDay(today.getFullYear(), today.getMonth(), day);
+
+  // Crear la fecha desde year/month/day evita saltos raros en meses cortos, por ejemplo febrero o diciembre/enero.
+  return currentMonthTarget >= today
+    ? currentMonthTarget
+    : dateWithSafeDay(today.getFullYear(), today.getMonth() + 1, day);
+}
+
+function dateWithSafeDay(year: number, month: number, day: number) {
+  return new Date(year, month, Math.min(day, daysInMonth(year, month)));
+}
+
+function daysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function getDayDifference(start: Date, end: Date) {
+  return Math.round((startOfDay(end).getTime() - startOfDay(start).getTime()) / 86400000);
 }
 
 function getCardName(cards: CreditCard[], cardId: string | null) {
@@ -649,14 +674,19 @@ function buildFinancialAlerts({
   const alerts: FinancialAlert[] = [];
 
   cardSummaries
-    .filter((summary) => summary.pending > 0 && summary.daysToPayment <= 5)
+    .filter(
+      (summary) =>
+        summary.paymentAlertPending > 0 &&
+        summary.daysToPayment >= 0 &&
+        summary.daysToPayment <= CARD_PAYMENT_ALERT_WINDOW_DAYS
+    )
     .sort((a, b) => a.daysToPayment - b.daysToPayment)
-    .slice(0, 2)
+    .slice(0, 4)
     .forEach((summary) => {
       alerts.push({
         id: `card-payment-${summary.card.id}`,
         title: "Pago de tarjeta proximo",
-        description: `${summary.card.name} vence en ${summary.daysToPayment} dia(s). Saldo pendiente estimado: ${formatCurrency(summary.pending, summary.card.currency)}.`,
+        description: getPaymentDueAlertDescription(summary),
         tone: summary.daysToPayment <= 2 ? "danger" : "warning",
       });
     });
@@ -706,6 +736,15 @@ function buildFinancialAlerts({
     });
 
   return alerts.slice(0, 6);
+}
+
+function getPaymentDueAlertDescription(summary: DashboardCardSummary) {
+  const dueText =
+    summary.daysToPayment === 0
+      ? `Pago de ${summary.card.name} vence hoy`
+      : `Pago de ${summary.card.name} vence en ${summary.daysToPayment} dia(s)`;
+
+  return `${dueText}. Saldo pendiente estimado: ${formatCurrency(summary.paymentAlertPending, summary.card.currency)}.`;
 }
 
 function getAssetPriceAlertStatus(asset: InvestmentAsset) {
