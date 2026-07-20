@@ -4,6 +4,8 @@ Fase: v0.10.0-automatic-exchange-rates
 Fuente principal: Frankfurter / ECB
 SQL: `docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql`
 
+Pulido: v0.10.1-automatic-exchange-rates-polish
+
 ## Objetivo
 
 Medra usa tipos de cambio automaticos de referencia diaria como fuente principal para el reporte patrimonial consolidado.
@@ -32,6 +34,25 @@ Se usa Frankfurter API con datos de referencia de ECB.
   - `providers=ECB`: limita la fuente a referencia ECB cuando esta disponible.
 
 Estas tasas son referencias diarias, no precios de mercado en tiempo real. Pueden actualizarse cuando ECB/Frankfurter publica datos del dia habil mas reciente.
+
+## Experiencia en Reportes
+
+En `/reportes`, Medra muestra solo la gestion de tipos de cambio automaticos:
+
+- moneda base seleccionada;
+- fuente `Frankfurter / ECB`;
+- fecha de referencia de la tasa mas reciente disponible;
+- ultima actualizacion guardada;
+- monedas disponibles para convertir hacia la moneda base;
+- monedas faltantes, si alguna no tiene una tasa directa o inversa clara.
+
+Si todavia no hay tasas guardadas, la seccion muestra un mensaje claro y mantiene visible el boton `Actualizar tipos de cambio`.
+
+Si una moneda falta, Medra la excluye del total consolidado y muestra un aviso. Esto evita totales engañosos.
+
+La moneda base sugerida viene de `preferred_currency`, pero si el usuario cambia la moneda base manualmente en Reportes, esa seleccion se respeta durante la sesion. No se modifica la preferencia guardada automaticamente.
+
+Los tipos de cambio manuales quedan como legacy/respaldo tecnico. No se borran, pero ya no se muestran como experiencia principal.
 
 ## Monedas soportadas
 

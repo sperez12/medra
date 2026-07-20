@@ -122,6 +122,7 @@ export function BasicReports() {
   const [automaticExchangeRates, setAutomaticExchangeRates] = useState<AutomaticExchangeRate[]>([]);
   const [snapshotNotes, setSnapshotNotes] = useState("");
   const [baseCurrency, setBaseCurrency] = useState(DEFAULT_CURRENCY);
+  const [hasSelectedBaseCurrency, setHasSelectedBaseCurrency] = useState(false);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,10 +136,10 @@ export function BasicReports() {
   }, []);
 
   useEffect(() => {
-    if (preferencesLoaded) {
-      setBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
+    if (preferencesLoaded && !hasSelectedBaseCurrency) {
+      setBaseCurrency(preferredCurrency);
     }
-  }, [preferencesLoaded, preferredCurrency]);
+  }, [hasSelectedBaseCurrency, preferencesLoaded, preferredCurrency]);
 
   async function loadData() {
     if (!supabase) {
@@ -399,6 +400,11 @@ export function BasicReports() {
     }
   }
 
+  function handleBaseCurrencyChange(currency: string) {
+    setHasSelectedBaseCurrency(true);
+    setBaseCurrency(normalizeCurrency(currency));
+  }
+
   if (isLoading && !hasLoadedReports) {
     return <StatusPanel text="Cargando reportes..." />;
   }
@@ -486,7 +492,7 @@ export function BasicReports() {
         <ConsolidatedNetWorthSection
           baseCurrency={baseCurrency}
           dateFormat={dateFormat}
-          onBaseCurrencyChange={setBaseCurrency}
+          onBaseCurrencyChange={handleBaseCurrencyChange}
           result={consolidatedNetWorth}
         />
       </section>
@@ -497,7 +503,7 @@ export function BasicReports() {
           dateFormat={dateFormat}
           isUpdating={isUpdatingAutomaticExchangeRates}
           needsMigration={needsAutomaticExchangeRatesMigration}
-          onBaseCurrencyChange={setBaseCurrency}
+          onBaseCurrencyChange={handleBaseCurrencyChange}
           onUpdate={updateAutomaticExchangeRates}
           rates={automaticExchangeRates}
         />
@@ -822,6 +828,26 @@ function findLatestAutomaticExchangeRate(rates: AutomaticExchangeRate[], fromCur
     });
 
   return matches[0] ?? null;
+}
+
+function getAutomaticExchangeRateCoverage(rates: AutomaticExchangeRate[], baseCurrency: string) {
+  const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
+
+  return SUPPORTED_CURRENCIES
+    .map((currency) => currency.code)
+    .filter((currency) => currency !== normalizedBaseCurrency)
+    .map((currency) => ({
+      currency,
+      match: findLatestAutomaticExchangeRate(rates, currency, normalizedBaseCurrency),
+    }));
+}
+
+function getLatestAutomaticRateField(rates: AutomaticExchangeRate[], field: "rate_date" | "fetched_at") {
+  const latestRate = [...rates]
+    .filter((rate) => Boolean(rate[field]))
+    .sort((a, b) => new Date(b[field]).getTime() - new Date(a[field]).getTime())[0];
+
+  return latestRate?.[field] ?? null;
 }
 
 function getLatestAutomaticRatesForBase(rates: AutomaticExchangeRate[], baseCurrency: string) {
@@ -1178,11 +1204,14 @@ function ConsolidatedNetWorthSection({
       <div className="mt-5 min-w-0 rounded-md bg-slate-950 p-4 text-white">
         <p className="text-sm text-slate-300">Total consolidado estimado en {result.baseCurrency}</p>
         <p className="mt-1 text-3xl font-bold"><MoneyAmount amount={result.total} currency={result.baseCurrency} /></p>
+        {result.missingRates.length > 0 ? (
+          <p className="mt-2 text-xs text-slate-300">Este total excluye monedas sin tasa automatica disponible.</p>
+        ) : null}
       </div>
 
       {result.missingRates.length > 0 ? (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          Faltan tipos de cambio: {result.missingRates.join(", ")}. Esos montos no se sumaron al total consolidado.
+          Faltan tipos de cambio automaticos: {formatMissingRateList(result.missingRates)}. Esos montos no se sumaron al total consolidado.
         </div>
       ) : null}
 
@@ -1201,7 +1230,7 @@ function ConsolidatedNetWorthSection({
               </div>
               <div className="min-w-0 text-sm sm:text-right">
                 {row.convertedAmount === null ? (
-                  <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
+                  <p className="font-medium text-amber-700">{`Falta tipo de cambio automatico ${row.currency} -> ${result.baseCurrency}`}</p>
                 ) : (
                   <>
                     <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
@@ -1257,7 +1286,7 @@ function ConsolidatedNetWorthSection({
 
             {result.snapshotComparison.missingRates.length > 0 ? (
               <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                Faltan tasas para convertir snapshots: {result.snapshotComparison.missingRates.join(", ")}. Esas monedas no se sumaron a la comparacion.
+                Faltan tasas automaticas para convertir snapshots: {formatMissingRateList(result.snapshotComparison.missingRates)}. Esas monedas no se sumaron a la comparacion.
               </div>
             ) : null}
 
@@ -1273,7 +1302,7 @@ function ConsolidatedNetWorthSection({
                     </div>
                     <div className="min-w-0 text-sm sm:text-right">
                       {row.convertedAmount === null ? (
-                        <p className="font-medium text-amber-700">{`Falta tipo de cambio ${row.currency} -> ${result.baseCurrency}`}</p>
+                        <p className="font-medium text-amber-700">{`Falta tipo de cambio automatico ${row.currency} -> ${result.baseCurrency}`}</p>
                       ) : (
                         <>
                           <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
@@ -1314,8 +1343,13 @@ function AutomaticExchangeRatesSection({
   rates: AutomaticExchangeRate[];
 }) {
   const latestRates = getLatestAutomaticRatesForBase(rates, baseCurrency);
-  const latestFetchedAt = latestRates[0]?.fetched_at ?? null;
-  const latestRateDate = latestRates[0]?.rate_date ?? null;
+  const rateCoverage = getAutomaticExchangeRateCoverage(rates, baseCurrency);
+  const availableCoverage = rateCoverage.flatMap((row) => (row.match ? [{ currency: row.currency, match: row.match }] : []));
+  const missingCurrencies = rateCoverage.filter((row) => !row.match).map((row) => row.currency);
+  const latestCoveredRates = availableCoverage.map((row) => row.match.rate);
+  const latestFetchedAt = getLatestAutomaticRateField(latestCoveredRates, "fetched_at");
+  const latestRateDate = getLatestAutomaticRateField(latestCoveredRates, "rate_date");
+  const hasDirectRatesForBase = latestRates.length > 0;
 
   return (
     <div className="min-w-0 rounded-lg border border-teal-100 bg-white p-4 shadow-sm sm:p-5">
@@ -1324,7 +1358,7 @@ function AutomaticExchangeRatesSection({
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Frankfurter / ECB</p>
           <h2 className="mt-1 text-xl font-semibold text-slate-950">Tipos de cambio automaticos</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Fuente principal para el reporte patrimonial consolidado. Son tasas diarias de referencia, no precios en tiempo real.
+            Tasas diarias de referencia Frankfurter / ECB para reportes consolidados. No son precios en tiempo real y no modifican tus saldos originales.
           </p>
         </div>
         <div className="min-w-0 sm:w-64">
@@ -1349,27 +1383,70 @@ function AutomaticExchangeRatesSection({
         </div>
       ) : null}
 
-      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-3">
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Moneda base" value={normalizeCurrency(baseCurrency)} />
         <SummaryCard label="Fuente" value="Frankfurter / ECB" />
         <SummaryCard label="Fecha de tasa" value={latestRateDate ? formatDate(latestRateDate, dateFormat) : "Sin datos"} />
         <SummaryCard label="Ultima actualizacion" value={latestFetchedAt ? formatDateTime(latestFetchedAt, dateFormat) : "Sin datos"} />
       </div>
 
+      <div className="mt-5 grid min-w-0 gap-3 lg:grid-cols-2">
+        <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <h3 className="text-sm font-semibold text-slate-950">Monedas disponibles hacia {normalizeCurrency(baseCurrency)}</h3>
+          <p className="mt-1 text-xs text-slate-500">El reporte puede usar tasas directas o inversas claras en memoria.</p>
+          {availableCoverage.length > 0 ? (
+            <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+              {availableCoverage.map((row) => (
+                <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-800" key={row.currency}>
+                  {row.currency}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <EmptyMessage text="Todavia no hay monedas disponibles para esta base. Actualiza los tipos de cambio para empezar." />
+          )}
+        </div>
+        <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <h3 className="text-sm font-semibold text-slate-950">Monedas faltantes</h3>
+          <p className="mt-1 text-xs text-slate-500">Si una moneda falta, se excluye del total consolidado para evitar montos engañosos.</p>
+          {missingCurrencies.length > 0 ? (
+            <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+              {missingCurrencies.map((currency) => (
+                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800" key={currency}>
+                  {currency}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">Todas las monedas soportadas tienen una conversion disponible hacia {normalizeCurrency(baseCurrency)}.</p>
+          )}
+        </div>
+      </div>
+
       <div className="mt-5">
-        <h3 className="text-sm font-semibold text-slate-950">Tasas disponibles para {normalizeCurrency(baseCurrency)}</h3>
+        <h3 className="text-sm font-semibold text-slate-950">Tasas guardadas con base {normalizeCurrency(baseCurrency)}</h3>
+        <p className="mt-1 text-xs text-slate-500">Estos son pares directos de base hacia destino. El reporte consolidado tambien puede usar una tasa inversa cuando la direccion es clara.</p>
         <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {latestRates.map((rate) => (
-            <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3" key={`${rate.base_currency}-${rate.quote_currency}-${rate.rate_date}-${rate.source}`}>
+            <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3" key={rate.id}>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date, dateFormat)}</p>
               <p className="mt-1 text-sm font-semibold text-slate-950">
                 1 {rate.base_currency} = {formatExchangeRateValue(Number(rate.rate))} {rate.quote_currency}
               </p>
-              <p className="mt-1 text-xs text-slate-500">Referencia diaria. Guardada para tu usuario.</p>
+              <p className="mt-1 text-xs text-slate-500">Referencia diaria Frankfurter / ECB. Guardada para tu usuario.</p>
             </div>
           ))}
         </div>
         {latestRates.length === 0 ? (
-          <EmptyMessage text={needsMigration ? "La tabla de tipos automaticos aun no existe." : "Actualiza los tipos de cambio para calcular reportes consolidados."} />
+          <EmptyMessage
+            text={
+              needsMigration
+                ? "La tabla de tipos automaticos aun no existe."
+                : availableCoverage.length > 0 && !hasDirectRatesForBase
+                  ? "No hay pares directos guardados con esta moneda como base. El reporte puede usar tasas inversas existentes, pero conviene actualizar esta moneda base para una lectura mas clara."
+                  : "Actualiza los tipos de cambio para calcular reportes consolidados."
+            }
+          />
         ) : null}
       </div>
     </div>
@@ -1574,10 +1651,19 @@ function formatAutomaticRateUsage(match: AutomaticExchangeRateMatch, dateFormat?
   const dateText = formatDate(match.rate.rate_date, dateFormat);
 
   if (match.direction === "direct") {
-    return `Frankfurter / ECB ${baseCurrency} -> ${quoteCurrency}: ${rateText} del ${dateText}`;
+    return `Tasa usada: 1 ${baseCurrency} = ${rateText} ${quoteCurrency} (Frankfurter / ECB, ${dateText})`;
   }
 
-  return `Frankfurter / ECB ${baseCurrency} -> ${quoteCurrency}: ${rateText} del ${dateText}; conversion inversa en memoria`;
+  return `Tasa usada: 1 ${baseCurrency} = ${rateText} ${quoteCurrency} (Frankfurter / ECB, ${dateText}); Medra divide en memoria para convertir ${quoteCurrency} a ${baseCurrency}.`;
+}
+
+function formatMissingRateList(missingRates: string[]) {
+  return missingRates
+    .map((rate) => {
+      const [fromCurrency, toCurrency] = rate.split("->").map((value) => value.trim());
+      return fromCurrency && toCurrency ? `${fromCurrency} hacia ${toCurrency}` : rate;
+    })
+    .join(", ");
 }
 
 function getFriendlySnapshotError(error: string) {

@@ -54,13 +54,13 @@ export async function POST(request: Request) {
     result = await fetchFrankfurterExchangeRates({ baseCurrency, quoteCurrencies });
   } catch {
     return NextResponse.json({
-      error: "No pude conectar con Frankfurter / ECB. Intenta mas tarde.",
+      error: "No pude conectar con Frankfurter / ECB. Tus tasas anteriores se conservan; intenta mas tarde.",
     }, { status: 502 });
   }
 
   if (result.rates.length === 0) {
     return NextResponse.json({
-      error: "Frankfurter / ECB no devolvio tasas para esa moneda base.",
+      error: "Frankfurter / ECB no devolvio tasas para esa moneda base. Intenta con otra moneda o vuelve mas tarde.",
     }, { status: 502 });
   }
 
