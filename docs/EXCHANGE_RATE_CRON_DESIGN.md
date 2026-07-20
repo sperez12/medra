@@ -3,6 +3,8 @@
 Fase: v0.10.2-exchange-rate-cron-design  
 Estado: diseno y preparacion. No activa cron.
 
+Implementacion parcial posterior: v0.10.3-exchange-rate-lazy-refresh
+
 ## Resumen ejecutivo
 
 Medra ya puede actualizar tipos de cambio desde Frankfurter / ECB en `/reportes`, pero esa actualizacion es manual y requiere una sesion de usuario.
@@ -16,6 +18,8 @@ Recomendacion para Medra ahora:
 3. Dejar el cron global real para una fase posterior, con diseno, pruebas y secretos de servidor bien controlados.
 
 Esta fase no agrega cron, no agrega secretos, no usa `service_role`, no modifica base de datos y no cambia calculos financieros.
+
+En `v0.10.3`, Medra implementa la primera version de Opcion B como aviso conservador mas boton autenticado. No hace auto-refresh en segundo plano todavia.
 
 ## Estado actual
 
@@ -304,6 +308,8 @@ Mitigaciones:
 - Revisar logs para que no incluyan secretos.
 
 ## Pasos futuros para implementar Opcion B
+
+Estado: primera version implementada en `v0.10.3-exchange-rate-lazy-refresh`.
 
 1. Calcular antiguedad de tasas en `/reportes`.
 2. Definir umbral, por ejemplo 24 o 36 horas.

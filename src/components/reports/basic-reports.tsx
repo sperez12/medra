@@ -72,6 +72,13 @@ type AutomaticExchangeRateMatch = {
   conversionRate: number;
 };
 
+type AutomaticExchangeRateFreshness = {
+  status: "current" | "missing" | "possibly_stale";
+  title: string;
+  description: string;
+  helper: string;
+};
+
 type ConsolidatedNetWorthResult = {
   baseCurrency: string;
   total: number;
@@ -850,6 +857,52 @@ function getLatestAutomaticRateField(rates: AutomaticExchangeRate[], field: "rat
   return latestRate?.[field] ?? null;
 }
 
+function getAutomaticExchangeRateFreshness({
+  baseCurrency,
+  hasDirectRatesForBase,
+  latestRateDate,
+}: {
+  baseCurrency: string;
+  hasDirectRatesForBase: boolean;
+  latestRateDate: string | null;
+}): AutomaticExchangeRateFreshness {
+  const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
+
+  if (!hasDirectRatesForBase || !latestRateDate) {
+    return {
+      status: "missing",
+      title: `Faltan tasas para ${normalizedBaseCurrency}`,
+      description: `No hay tasas guardadas con ${normalizedBaseCurrency} como moneda base. Actualiza los tipos de cambio para calcular reportes consolidados con esta base.`,
+      helper: "La actualizacion usa tu sesion activa. Si falla, se conservan las tasas anteriores.",
+    };
+  }
+
+  if (latestRateDate < getTodayDateKey()) {
+    return {
+      status: "possibly_stale",
+      title: "Las tasas disponibles podrian no ser las mas recientes.",
+      description: `Ultima tasa disponible: ${latestRateDate}. Podria no haber nueva tasa si es fin de semana o dia inhabil.`,
+      helper: "Puedes actualizar cuando quieras. Si Frankfurter / ECB falla, Medra conserva las tasas anteriores.",
+    };
+  }
+
+  return {
+    status: "current",
+    title: "Actualizadas hoy",
+    description: `Ultima tasa disponible: ${latestRateDate}.`,
+    helper: "Estas tasas son referencias diarias, no precios en tiempo real.",
+  };
+}
+
+function getTodayDateKey() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function getLatestAutomaticRatesForBase(rates: AutomaticExchangeRate[], baseCurrency: string) {
   const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
   const latestByQuoteCurrency = new Map<string, AutomaticExchangeRate>();
@@ -1347,9 +1400,14 @@ function AutomaticExchangeRatesSection({
   const availableCoverage = rateCoverage.flatMap((row) => (row.match ? [{ currency: row.currency, match: row.match }] : []));
   const missingCurrencies = rateCoverage.filter((row) => !row.match).map((row) => row.currency);
   const latestCoveredRates = availableCoverage.map((row) => row.match.rate);
-  const latestFetchedAt = getLatestAutomaticRateField(latestCoveredRates, "fetched_at");
-  const latestRateDate = getLatestAutomaticRateField(latestCoveredRates, "rate_date");
+  const latestFetchedAt = getLatestAutomaticRateField(latestRates, "fetched_at") ?? getLatestAutomaticRateField(latestCoveredRates, "fetched_at");
+  const latestRateDate = getLatestAutomaticRateField(latestRates, "rate_date") ?? getLatestAutomaticRateField(latestCoveredRates, "rate_date");
   const hasDirectRatesForBase = latestRates.length > 0;
+  const freshness = getAutomaticExchangeRateFreshness({
+    baseCurrency,
+    hasDirectRatesForBase,
+    latestRateDate,
+  });
 
   return (
     <div className="min-w-0 rounded-lg border border-teal-100 bg-white p-4 shadow-sm sm:p-5">
@@ -1382,6 +1440,8 @@ function AutomaticExchangeRatesSection({
           Para guardar tipos de cambio automaticos, ejecuta la migracion pendiente: docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql.
         </div>
       ) : null}
+
+      {!needsMigration ? <ExchangeRateFreshnessMessage freshness={freshness} /> : null}
 
       <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Moneda base" value={normalizeCurrency(baseCurrency)} />
@@ -1449,6 +1509,23 @@ function AutomaticExchangeRatesSection({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function ExchangeRateFreshnessMessage({ freshness }: { freshness: AutomaticExchangeRateFreshness }) {
+  const styles =
+    freshness.status === "current"
+      ? "border-green-200 bg-green-50 text-green-800"
+      : freshness.status === "missing"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-blue-200 bg-blue-50 text-blue-800";
+
+  return (
+    <div className={`mt-4 rounded-md border p-3 text-sm ${styles}`}>
+      <p className="font-semibold">{freshness.title}</p>
+      <p className="mt-1">{freshness.description}</p>
+      <p className="mt-1 text-xs opacity-90">{freshness.helper}</p>
     </div>
   );
 }

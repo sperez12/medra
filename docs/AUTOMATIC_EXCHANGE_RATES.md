@@ -6,6 +6,8 @@ SQL: `docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql`
 
 Pulido: v0.10.1-automatic-exchange-rates-polish
 
+Lazy refresh: v0.10.3-exchange-rate-lazy-refresh
+
 ## Objetivo
 
 Medra usa tipos de cambio automaticos de referencia diaria como fuente principal para el reporte patrimonial consolidado.
@@ -48,11 +50,33 @@ En `/reportes`, Medra muestra solo la gestion de tipos de cambio automaticos:
 
 Si todavia no hay tasas guardadas, la seccion muestra un mensaje claro y mantiene visible el boton `Actualizar tipos de cambio`.
 
+Si las tasas guardadas para la moneda base parecen antiguas, Medra muestra un aviso conservador:
+
+> Las tasas disponibles podrian no ser las mas recientes.
+
+Esto no es una alarma fuerte. Frankfurter / ECB publica tasas de referencia diaria y puede no tener una tasa nueva en fines de semana o dias inhabiles.
+
 Si una moneda falta, Medra la excluye del total consolidado y muestra un aviso. Esto evita totales engañosos.
 
 La moneda base sugerida viene de `preferred_currency`, pero si el usuario cambia la moneda base manualmente en Reportes, esa seleccion se respeta durante la sesion. No se modifica la preferencia guardada automaticamente.
 
 Los tipos de cambio manuales quedan como legacy/respaldo tecnico. No se borran, pero ya no se muestran como experiencia principal.
+
+## Lazy refresh autenticado
+
+La fase `v0.10.3-exchange-rate-lazy-refresh` implementa la Opcion B del documento `docs/EXCHANGE_RATE_CRON_DESIGN.md`.
+
+Comportamiento:
+
+- Medra revisa en `/reportes` si faltan tasas para la moneda base seleccionada.
+- Medra revisa si la fecha de tasa mas reciente es anterior a hoy.
+- Si faltan tasas o podrian estar viejas, muestra un aviso y mantiene visible el boton `Actualizar tipos de cambio`.
+- La actualizacion sigue usando la sesion del usuario autenticado.
+- No se consulta Frankfurter / ECB sin sesion.
+- No hay auto-refresh en segundo plano todavia.
+- Si la actualizacion falla, se conservan las tasas anteriores.
+
+Este flujo mejora la experiencia sin activar cron, sin agregar secretos y sin usar `service_role`.
 
 ## Monedas soportadas
 
@@ -180,6 +204,7 @@ Si no existe una tasa directa o inversa clara para convertir una moneda hacia la
 - No hay actualizacion automatica programada.
 - No hay Vercel Cron.
 - No hay `CRON_SECRET`.
+- No hay auto-refresh automatico en segundo plano.
 - No se usan estas tasas en saldos originales.
 - No se guardan tasas invertidas automaticamente.
 - No hay historico avanzado ni graficas.
