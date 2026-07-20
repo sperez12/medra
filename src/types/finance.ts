@@ -228,6 +228,21 @@ export type ManualExchangeRate = {
   created_at: string;
 };
 
+export type AutomaticExchangeRateSource = "frankfurter";
+
+export type AutomaticExchangeRate = {
+  id: string;
+  user_id: string;
+  base_currency: CurrencyCode | string;
+  quote_currency: CurrencyCode | string;
+  rate: number;
+  rate_date: string;
+  source: AutomaticExchangeRateSource;
+  fetched_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type UserDashboardPeriodPreference = "current_period" | "current_month" | "previous_month";
 export type UserDateFormatPreference = "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
 

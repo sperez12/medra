@@ -18,6 +18,7 @@ import {
 import type {
   Account,
   AccountMovement,
+  AutomaticExchangeRate,
   Category,
   CreditCard,
   Expense,
@@ -122,8 +123,10 @@ export function BasicReports() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
   const [exchangeRates, setExchangeRates] = useState<ManualExchangeRate[]>([]);
+  const [automaticExchangeRates, setAutomaticExchangeRates] = useState<AutomaticExchangeRate[]>([]);
   const [snapshotNotes, setSnapshotNotes] = useState("");
   const [baseCurrency, setBaseCurrency] = useState(DEFAULT_CURRENCY);
+  const [automaticBaseCurrency, setAutomaticBaseCurrency] = useState(DEFAULT_CURRENCY);
   const [exchangeRateForm, setExchangeRateForm] = useState<ExchangeRateForm>({
     rate_date: new Date().toISOString().slice(0, 10),
     from_currency: "USD",
@@ -137,6 +140,8 @@ export function BasicReports() {
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [isSavingExchangeRate, setIsSavingExchangeRate] = useState(false);
+  const [isUpdatingAutomaticExchangeRates, setIsUpdatingAutomaticExchangeRates] = useState(false);
+  const [needsAutomaticExchangeRatesMigration, setNeedsAutomaticExchangeRatesMigration] = useState(false);
   const [editingExchangeRateId, setEditingExchangeRateId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -146,6 +151,7 @@ export function BasicReports() {
   useEffect(() => {
     if (preferencesLoaded) {
       setBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
+      setAutomaticBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
       setExchangeRateForm((currentForm) => currentForm.to_currency === DEFAULT_CURRENCY ? { ...currentForm, to_currency: preferredCurrency } : currentForm);
     }
   }, [preferencesLoaded, preferredCurrency]);
@@ -178,6 +184,7 @@ export function BasicReports() {
       { data: holdingData, error: holdingError },
       { data: snapshotData, error: snapshotError },
       { data: exchangeRateData, error: exchangeRateError },
+      { data: automaticExchangeRateData, error: automaticExchangeRateError },
     ] = await Promise.all([
       supabase.from("credit_cards").select("*").eq("user_id", userData.user.id).order("name"),
       supabase.from("expenses").select("*").eq("user_id", userData.user.id).order("expense_date", { ascending: false }),
@@ -200,6 +207,13 @@ export function BasicReports() {
         .order("rate_date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(30),
+      supabase
+        .from("exchange_rates")
+        .select("*")
+        .eq("user_id", userData.user.id)
+        .order("rate_date", { ascending: false })
+        .order("fetched_at", { ascending: false })
+        .limit(80),
     ]);
 
     if (
@@ -244,6 +258,17 @@ export function BasicReports() {
     setHoldings((holdingData ?? []) as Holding[]);
     setSnapshots((snapshotData ?? []) as NetWorthSnapshot[]);
     setExchangeRates((exchangeRateData ?? []) as ManualExchangeRate[]);
+    if (automaticExchangeRateError) {
+      const missingAutomaticRatesTable = isMissingAutomaticExchangeRatesTableError(automaticExchangeRateError);
+      setNeedsAutomaticExchangeRatesMigration(missingAutomaticRatesTable);
+      setAutomaticExchangeRates([]);
+      if (!missingAutomaticRatesTable) {
+        setMessage({ type: "error", text: getFriendlyAutomaticExchangeRateError(automaticExchangeRateError) });
+      }
+    } else {
+      setNeedsAutomaticExchangeRatesMigration(false);
+      setAutomaticExchangeRates((automaticExchangeRateData ?? []) as AutomaticExchangeRate[]);
+    }
     setHasLoadedReports(true);
     setIsLoading(false);
   }
@@ -443,6 +468,50 @@ export function BasicReports() {
     await loadData();
   }
 
+  async function updateAutomaticExchangeRates() {
+    setMessage(null);
+    if (!supabase) return setMessage({ type: "error", text: "Falta configurar Supabase para actualizar tipos de cambio automaticos." });
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) return setMessage({ type: "error", text: "Primero inicia sesion para actualizar tipos de cambio automaticos." });
+
+    setIsUpdatingAutomaticExchangeRates(true);
+    try {
+      const response = await fetch("/api/exchange-rates/update", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          baseCurrency: automaticBaseCurrency,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (result.needsMigration) setNeedsAutomaticExchangeRatesMigration(true);
+        setMessage({
+          type: "error",
+          text: result.error ?? "No pude actualizar los tipos de cambio automaticos.",
+        });
+        return;
+      }
+
+      setNeedsAutomaticExchangeRatesMigration(false);
+      setMessage({
+        type: "success",
+        text: result.message ?? "Tipos de cambio automaticos actualizados correctamente.",
+      });
+      await loadData();
+    } catch {
+      setMessage({ type: "error", text: "No pude conectar con el actualizador de tipos de cambio. Intenta mas tarde." });
+    } finally {
+      setIsUpdatingAutomaticExchangeRates(false);
+    }
+  }
+
   if (isLoading && !hasLoadedReports) {
     return <StatusPanel text="Cargando reportes..." />;
   }
@@ -535,7 +604,16 @@ export function BasicReports() {
         />
       </section>
 
-      <section className="min-w-0 scroll-mt-24" id="tipos-cambio">
+      <section className="min-w-0 scroll-mt-24 space-y-4" id="tipos-cambio">
+        <AutomaticExchangeRatesSection
+          baseCurrency={automaticBaseCurrency}
+          dateFormat={dateFormat}
+          isUpdating={isUpdatingAutomaticExchangeRates}
+          needsMigration={needsAutomaticExchangeRatesMigration}
+          onBaseCurrencyChange={setAutomaticBaseCurrency}
+          onUpdate={updateAutomaticExchangeRates}
+          rates={automaticExchangeRates}
+        />
         <ExchangeRatesSection
           editingRateId={editingExchangeRateId}
           form={exchangeRateForm}
@@ -846,6 +924,30 @@ function findLatestExchangeRate(rates: ManualExchangeRate[], fromCurrency: strin
       if (dateDiff !== 0) return dateDiff;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     })[0] ?? null;
+}
+
+function getLatestAutomaticRatesForBase(rates: AutomaticExchangeRate[], baseCurrency: string) {
+  const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
+  const latestByQuoteCurrency = new Map<string, AutomaticExchangeRate>();
+
+  rates
+    .filter((rate) => normalizeCurrency(rate.base_currency) === normalizedBaseCurrency)
+    .forEach((rate) => {
+      const quoteCurrency = normalizeCurrency(rate.quote_currency);
+      const current = latestByQuoteCurrency.get(quoteCurrency);
+      if (!current) {
+        latestByQuoteCurrency.set(quoteCurrency, rate);
+        return;
+      }
+
+      const rateDateDiff = new Date(rate.rate_date).getTime() - new Date(current.rate_date).getTime();
+      const fetchedAtDiff = new Date(rate.fetched_at).getTime() - new Date(current.fetched_at).getTime();
+      if (rateDateDiff > 0 || (rateDateDiff === 0 && fetchedAtDiff > 0)) {
+        latestByQuoteCurrency.set(quoteCurrency, rate);
+      }
+    });
+
+  return Array.from(latestByQuoteCurrency.values()).sort((a, b) => normalizeCurrency(a.quote_currency).localeCompare(normalizeCurrency(b.quote_currency)));
 }
 
 function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[]): ReportRow[] {
@@ -1296,6 +1398,86 @@ function ConsolidatedNetWorthSection({
   );
 }
 
+function AutomaticExchangeRatesSection({
+  baseCurrency,
+  dateFormat,
+  isUpdating,
+  needsMigration,
+  onBaseCurrencyChange,
+  onUpdate,
+  rates,
+}: {
+  baseCurrency: string;
+  dateFormat: string;
+  isUpdating: boolean;
+  needsMigration: boolean;
+  onBaseCurrencyChange: (currency: string) => void;
+  onUpdate: () => void;
+  rates: AutomaticExchangeRate[];
+}) {
+  const latestRates = getLatestAutomaticRatesForBase(rates, baseCurrency);
+  const latestFetchedAt = latestRates[0]?.fetched_at ?? null;
+  const latestRateDate = latestRates[0]?.rate_date ?? null;
+
+  return (
+    <div className="min-w-0 rounded-lg border border-teal-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Frankfurter / ECB</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-950">Tipos de cambio automaticos</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Tasas diarias de referencia para consulta. No son precios en tiempo real y todavia no reemplazan tus tasas manuales en el calculo consolidado.
+          </p>
+        </div>
+        <div className="min-w-0 sm:w-64">
+          <label className="text-sm font-medium text-slate-700">
+            Moneda base
+            <CurrencySelect value={baseCurrency} onChange={onBaseCurrencyChange} />
+          </label>
+          <button
+            className="mt-3 w-full rounded-md bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={isUpdating}
+            onClick={onUpdate}
+            type="button"
+          >
+            {isUpdating ? "Actualizando..." : "Actualizar tipos de cambio"}
+          </button>
+        </div>
+      </div>
+
+      {needsMigration ? (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Para guardar tipos de cambio automaticos, ejecuta la migracion pendiente: docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql.
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid min-w-0 gap-3 md:grid-cols-3">
+        <SummaryCard label="Fuente" value="Frankfurter / ECB" />
+        <SummaryCard label="Fecha de tasa" value={latestRateDate ? formatDate(latestRateDate, dateFormat) : "Sin datos"} />
+        <SummaryCard label="Ultima actualizacion" value={latestFetchedAt ? formatDateTime(latestFetchedAt, dateFormat) : "Sin datos"} />
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-slate-950">Tasas disponibles para {normalizeCurrency(baseCurrency)}</h3>
+        <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {latestRates.map((rate) => (
+            <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3" key={`${rate.base_currency}-${rate.quote_currency}-${rate.rate_date}-${rate.source}`}>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date, dateFormat)}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">
+                1 {rate.base_currency} = {formatExchangeRateValue(Number(rate.rate))} {rate.quote_currency}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">Referencia diaria. Guardada para tu usuario.</p>
+            </div>
+          ))}
+        </div>
+        {latestRates.length === 0 ? (
+          <EmptyMessage text={needsMigration ? "La tabla de tipos automaticos aun no existe." : "Todavia no tienes tipos de cambio automaticos para esta moneda base."} />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function ExchangeRatesSection({
   dateFormat,
   editingRateId,
@@ -1595,6 +1777,16 @@ function formatDate(dateValue: string, dateFormat?: string) {
   return formatDateForPreference(dateValue, dateFormat);
 }
 
+function formatDateTime(dateValue: string, dateFormat?: string) {
+  const date = new Date(dateValue);
+  const time = date.toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return `${formatDate(dateValue, dateFormat)} ${time}`;
+}
+
 function formatPercentChange(value: number) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(1)}%`;
@@ -1646,6 +1838,26 @@ function getFriendlyExchangeRateError(error: SupabaseErrorLike | string) {
     return "Revisa el tipo de cambio: la tasa debe ser mayor a 0 y las monedas deben ser diferentes.";
   }
   return `No se pudo completar la accion de tipos de cambio. Detalle: ${message || "Error desconocido"}`;
+}
+
+function getFriendlyAutomaticExchangeRateError(error: SupabaseErrorLike | string) {
+  const message = typeof error === "string" ? error : error.message ?? "";
+  if (isMissingAutomaticExchangeRatesTableError(error)) {
+    return "Para guardar tipos de cambio automaticos, ejecuta la migracion pendiente.";
+  }
+
+  return message ? "No pude cargar los tipos de cambio automaticos. Intenta mas tarde." : "No pude cargar los tipos de cambio automaticos.";
+}
+
+function isMissingAutomaticExchangeRatesTableError(error: SupabaseErrorLike | string) {
+  const code = typeof error === "string" ? "" : error.code ?? "";
+  const message = typeof error === "string" ? error : `${error.message ?? ""} ${error.details ?? ""}`;
+  const normalizedMessage = message.toLowerCase();
+
+  return (
+    code === "42P01" ||
+    normalizedMessage.includes("exchange_rates") && (normalizedMessage.includes("schema cache") || normalizedMessage.includes("does not exist"))
+  );
 }
 
 function StatusPanel({ text, tone = "info" }: { text: string; tone?: "error" | "info" | "success" }) {
