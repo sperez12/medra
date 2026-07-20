@@ -448,10 +448,21 @@ export function InvestmentManager() {
     fallbackError: string;
     connectionError: string;
   }) {
+    if (!supabase) {
+      return "Falta conectar Supabase para validar el proveedor de precios.";
+    }
+
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        return "Primero inicia sesion para validar el proveedor de precios.";
+      }
+
       const response = await fetch("/api/prices/validate", {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

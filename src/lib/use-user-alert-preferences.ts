@@ -62,7 +62,7 @@ export function useUserAlertPreferences() {
           needsMigration: missingTable,
         });
 
-        if (!missingTable) {
+        if (process.env.NODE_ENV !== "production" && !missingTable) {
           console.warn("No se pudieron cargar preferencias de alertas.", error.message);
         }
         return;

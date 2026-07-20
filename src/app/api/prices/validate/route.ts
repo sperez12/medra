@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 type ValidatePriceRequest = {
@@ -7,6 +8,31 @@ type ValidatePriceRequest = {
 };
 
 export async function POST(request: Request) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const authorization = request.headers.get("authorization");
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return NextResponse.json({ valid: false, error: "Falta configurar Supabase." }, { status: 500 });
+  }
+
+  if (!authorization) {
+    return NextResponse.json({ valid: false, error: "Primero inicia sesion para validar precios." }, { status: 401 });
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: authorization,
+      },
+    },
+  });
+
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return NextResponse.json({ valid: false, error: "No pude validar tu sesion." }, { status: 401 });
+  }
+
   let body: ValidatePriceRequest;
 
   try {

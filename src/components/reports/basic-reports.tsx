@@ -346,7 +346,11 @@ export function BasicReports() {
     );
     if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun snapshot." });
 
-    const { error } = await supabase.from("net_worth_snapshots").delete().eq("id", snapshot.id);
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para borrar snapshots." });
+
+    const { error } = await supabase.from("net_worth_snapshots").delete().eq("id", snapshot.id).eq("user_id", userId);
     if (error) return setMessage({ type: "error", text: getFriendlySnapshotError(error.message) });
 
     setMessage({ type: "success", text: "Snapshot borrado correctamente." });
@@ -427,7 +431,11 @@ export function BasicReports() {
     );
     if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun tipo de cambio." });
 
-    const { error } = await supabase.from("manual_exchange_rates").delete().eq("id", rate.id);
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para borrar tipos de cambio." });
+
+    const { error } = await supabase.from("manual_exchange_rates").delete().eq("id", rate.id).eq("user_id", userId);
     if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error) });
 
     if (editingExchangeRateId === rate.id) resetExchangeRateForm();

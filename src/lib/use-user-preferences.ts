@@ -55,7 +55,7 @@ export function useUserPreferences() {
 
       if (error) {
         setPreferences({ ...fallbackPreferences, isLoaded: true });
-        if (!isMissingPreferencesTableError(error.message)) {
+        if (process.env.NODE_ENV !== "production" && !isMissingPreferencesTableError(error.message)) {
           console.warn("No se pudieron cargar preferencias de usuario.", error.message);
         }
         return;

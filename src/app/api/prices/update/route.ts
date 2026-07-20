@@ -143,7 +143,7 @@ export async function POST(request: Request) {
       .eq("user_id", userData.user.id);
 
     if (updateError) {
-      failures.push(`${requestInfo?.symbol ?? result.assetId}: ${updateError.message}`);
+      failures.push(`${requestInfo?.symbol ?? result.assetId}: no se pudo guardar el precio actualizado`);
       continue;
     }
 
@@ -235,5 +235,5 @@ function getFriendlyError(error: string) {
     return "Falta actualizar Supabase. Ejecuta docs/ADD_CRYPTO_PRICE_SUPPORT.sql y despues docs/ADD_PRICE_PROVIDER_ARCHITECTURE.sql.";
   }
 
-  return `No pude cargar tus activos para precios. Detalle: ${error}`;
+  return "No pude cargar tus activos para precios. Intenta mas tarde.";
 }

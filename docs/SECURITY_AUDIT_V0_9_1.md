@@ -384,6 +384,75 @@ Recomendacion:
 - Revisar si una actualizacion de Next resuelve `postcss`.
 - Hacer esa actualizacion como fase controlada con build, pruebas visuales y pruebas de login/Supabase.
 
+## Hardening aplicado
+
+Esta seccion documenta los cambios defensivos aplicados despues de la auditoria inicial, sin SQL nuevo y sin cambios de base de datos.
+
+### `/api/prices/validate` requiere sesion
+
+Archivos:
+
+- `src/app/api/prices/validate/route.ts`
+- `src/components/investments/investment-manager.tsx`
+
+Cambios:
+
+- La ruta ahora valida configuracion de Supabase y exige header `Authorization`.
+- Se valida la sesion con `supabase.auth.getUser()` antes de leer/procesar proveedores.
+- Si falta token o la sesion no es valida, responde `401` con mensaje generico.
+- El formulario de inversiones obtiene el `access_token` de la sesion actual y lo envia como `Bearer`.
+- La ruta ya no consulta CoinGecko ni Alpha Vantage cuando no hay sesion valida.
+- `ALPHA_VANTAGE_API_KEY` sigue siendo privada de servidor y no se devuelve al cliente.
+
+### Headers conservadores agregados
+
+Archivo:
+
+- `next.config.ts`
+
+Headers agregados a todas las rutas:
+
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `X-Frame-Options: DENY`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`
+
+No se agrego CSP estricta, COOP, COEP, CORP ni HSTS manual en esta fase.
+
+### Deletes de reportes reforzados
+
+Archivo:
+
+- `src/components/reports/basic-reports.tsx`
+
+Cambios:
+
+- Borrado de snapshots reforzado con `.eq("user_id", userId)`.
+- Borrado de tipos de cambio reforzado con `.eq("user_id", userId)`.
+- RLS sigue siendo la defensa principal, pero ahora tambien hay filtro por usuario en la query.
+
+### Mensajes y logs ajustados
+
+Archivos:
+
+- `src/app/api/prices/update/route.ts`
+- `src/lib/use-user-preferences.ts`
+- `src/lib/use-user-alert-preferences.ts`
+
+Cambios:
+
+- Algunos errores de guardado de precios ahora devuelven mensaje generico en vez de `updateError.message`.
+- El fallback generico al cargar activos para precios ya no devuelve el detalle tecnico crudo.
+- Los `console.warn` de preferencias quedan limitados a desarrollo con `process.env.NODE_ENV !== "production"`.
+
+### Pendientes no tocados en esta fase
+
+- CSP estricta.
+- Middleware o auth server-side para paginas privadas.
+- Rate limiting.
+- Actualizacion de Next/PostCSS.
+- Prueba manual de aislamiento con dos usuarios.
+
 ## Checklist de seguridad antes de beta
 
 - [ ] Confirmar RLS activo en todas las tablas de usuario en Supabase.
@@ -391,8 +460,8 @@ Recomendacion:
 - [ ] Confirmar que Vercel no tenga `service_role` configurado.
 - [ ] Confirmar que `ALPHA_VANTAGE_API_KEY` este solo como variable privada, no `NEXT_PUBLIC`.
 - [ ] Confirmar Redirect URLs en Supabase Auth para produccion y localhost.
-- [ ] Proteger `/api/prices/validate` con sesion.
-- [ ] Agregar headers de seguridad conservadores.
+- [x] Proteger `/api/prices/validate` con sesion.
+- [x] Agregar headers de seguridad conservadores.
 - [ ] Evaluar CSP en fase separada.
 - [ ] Resolver vulnerabilidad moderada de `postcss` cuando haya ruta segura de actualizacion.
 - [ ] Fijar versiones de dependencias antes de beta amplia.
@@ -436,8 +505,8 @@ Vercel:
 
 Orden recomendado:
 
-1. Crear una fase pequena para proteger `/api/prices/validate` con sesion.
-2. Crear una fase pequena para agregar headers de seguridad conservadores.
-3. Agregar `.eq("user_id", userId)` a deletes de reportes como defensa en profundidad.
-4. Planear una fase de dependencias para resolver `postcss` via actualizacion segura de Next/PostCSS.
-5. Hacer una prueba manual de aislamiento con dos usuarios antes de invitar beta testers.
+1. Probar manualmente login, inversiones, validacion de precios y reportes despues del hardening.
+2. Hacer una prueba manual de aislamiento con dos usuarios antes de invitar beta testers.
+3. Evaluar CSP estricta en una fase separada.
+4. Evaluar middleware o auth server-side para paginas privadas.
+5. Planear una fase de dependencias para resolver `postcss` via actualizacion segura de Next/PostCSS.
