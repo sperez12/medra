@@ -24,7 +24,6 @@ import type {
   Expense,
   Holding,
   InvestmentAsset,
-  ManualExchangeRate,
   NetWorthSnapshot,
   Payment,
   PaymentType,
@@ -67,12 +66,10 @@ type SnapshotHistoryRow = {
   percentChange: number | null;
 };
 
-type ExchangeRateForm = {
-  rate_date: string;
-  from_currency: string;
-  to_currency: string;
-  rate: string;
-  notes: string;
+type AutomaticExchangeRateMatch = {
+  rate: AutomaticExchangeRate;
+  direction: "direct" | "inverse";
+  conversionRate: number;
 };
 
 type ConsolidatedNetWorthResult = {
@@ -82,7 +79,7 @@ type ConsolidatedNetWorthResult = {
     currency: string;
     originalAmount: number;
     convertedAmount: number | null;
-    rate: ManualExchangeRate | null;
+    rate: AutomaticExchangeRateMatch | null;
     missingRate: boolean;
     sourceDate: string | null;
   }>;
@@ -93,7 +90,7 @@ type ConsolidatedNetWorthResult = {
       currency: string;
       originalAmount: number;
       convertedAmount: number | null;
-      rate: ManualExchangeRate | null;
+      rate: AutomaticExchangeRateMatch | null;
       missingRate: boolean;
       sourceDate: string | null;
     }>;
@@ -122,27 +119,16 @@ export function BasicReports() {
   const [assets, setAssets] = useState<InvestmentAsset[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
-  const [exchangeRates, setExchangeRates] = useState<ManualExchangeRate[]>([]);
   const [automaticExchangeRates, setAutomaticExchangeRates] = useState<AutomaticExchangeRate[]>([]);
   const [snapshotNotes, setSnapshotNotes] = useState("");
   const [baseCurrency, setBaseCurrency] = useState(DEFAULT_CURRENCY);
-  const [automaticBaseCurrency, setAutomaticBaseCurrency] = useState(DEFAULT_CURRENCY);
-  const [exchangeRateForm, setExchangeRateForm] = useState<ExchangeRateForm>({
-    rate_date: new Date().toISOString().slice(0, 10),
-    from_currency: "USD",
-    to_currency: DEFAULT_CURRENCY,
-    rate: "",
-    notes: "",
-  });
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoadedReports, setHasLoadedReports] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
-  const [isSavingExchangeRate, setIsSavingExchangeRate] = useState(false);
   const [isUpdatingAutomaticExchangeRates, setIsUpdatingAutomaticExchangeRates] = useState(false);
   const [needsAutomaticExchangeRatesMigration, setNeedsAutomaticExchangeRatesMigration] = useState(false);
-  const [editingExchangeRateId, setEditingExchangeRateId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -151,8 +137,6 @@ export function BasicReports() {
   useEffect(() => {
     if (preferencesLoaded) {
       setBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
-      setAutomaticBaseCurrency((currentCurrency) => currentCurrency === DEFAULT_CURRENCY ? preferredCurrency : currentCurrency);
-      setExchangeRateForm((currentForm) => currentForm.to_currency === DEFAULT_CURRENCY ? { ...currentForm, to_currency: preferredCurrency } : currentForm);
     }
   }, [preferencesLoaded, preferredCurrency]);
 
@@ -183,7 +167,6 @@ export function BasicReports() {
       { data: assetData, error: assetError },
       { data: holdingData, error: holdingError },
       { data: snapshotData, error: snapshotError },
-      { data: exchangeRateData, error: exchangeRateError },
       { data: automaticExchangeRateData, error: automaticExchangeRateError },
     ] = await Promise.all([
       supabase.from("credit_cards").select("*").eq("user_id", userData.user.id).order("name"),
@@ -199,13 +182,6 @@ export function BasicReports() {
         .select("*")
         .eq("user_id", userData.user.id)
         .order("snapshot_date", { ascending: false })
-        .limit(30),
-      supabase
-        .from("manual_exchange_rates")
-        .select("*")
-        .eq("user_id", userData.user.id)
-        .order("rate_date", { ascending: false })
-        .order("created_at", { ascending: false })
         .limit(30),
       supabase
         .from("exchange_rates")
@@ -225,8 +201,7 @@ export function BasicReports() {
       movementError ||
       assetError ||
       holdingError ||
-      snapshotError ||
-      exchangeRateError
+      snapshotError
     ) {
       setMessage({
         type: "error",
@@ -240,7 +215,6 @@ export function BasicReports() {
           assetError?.message ??
           holdingError?.message ??
           (snapshotError ? getFriendlySnapshotError(snapshotError.message) : null) ??
-          (exchangeRateError ? getFriendlyExchangeRateError(exchangeRateError) : null) ??
           "No se pudieron cargar los reportes.",
       });
       setHasLoadedReports(false);
@@ -257,7 +231,6 @@ export function BasicReports() {
     setAssets((assetData ?? []) as InvestmentAsset[]);
     setHoldings((holdingData ?? []) as Holding[]);
     setSnapshots((snapshotData ?? []) as NetWorthSnapshot[]);
-    setExchangeRates((exchangeRateData ?? []) as ManualExchangeRate[]);
     if (automaticExchangeRateError) {
       const missingAutomaticRatesTable = isMissingAutomaticExchangeRatesTableError(automaticExchangeRateError);
       setNeedsAutomaticExchangeRatesMigration(missingAutomaticRatesTable);
@@ -310,7 +283,7 @@ export function BasicReports() {
     periodFilter,
   });
   const snapshotHistoryRows = buildSnapshotHistoryRows(snapshots);
-  const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, exchangeRates, baseCurrency, snapshots);
+  const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, automaticExchangeRates, baseCurrency, snapshots);
   const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
   const topCard = expensesByCard[0] ? `${expensesByCard[0].label} (${expensesByCard[0].currency})` : "Sin datos";
   const dayCount = getPeriodDayCount(periodFilter, cards);
@@ -382,92 +355,6 @@ export function BasicReports() {
     await loadData();
   }
 
-  async function saveExchangeRate() {
-    setMessage(null);
-    if (!supabase) return setMessage({ type: "error", text: "Falta configurar Supabase para guardar tipos de cambio." });
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar tipos de cambio." });
-
-    const fromCurrency = normalizeCurrency(exchangeRateForm.from_currency);
-    const toCurrency = normalizeCurrency(exchangeRateForm.to_currency);
-    const rate = Number(exchangeRateForm.rate);
-
-    if (!exchangeRateForm.rate_date) {
-      return setMessage({ type: "error", text: "Elige una fecha para el tipo de cambio." });
-    }
-    if (fromCurrency === toCurrency) {
-      return setMessage({ type: "error", text: "La moneda origen y destino deben ser diferentes." });
-    }
-    if (!Number.isFinite(rate) || rate <= 0) {
-      return setMessage({ type: "error", text: "La tasa debe ser mayor a 0. Ejemplo: USD a MXN = 17.25." });
-    }
-
-    setIsSavingExchangeRate(true);
-    const isEditingExchangeRate = Boolean(editingExchangeRateId);
-    const payload = {
-      rate_date: exchangeRateForm.rate_date,
-      from_currency: fromCurrency,
-      to_currency: toCurrency,
-      rate,
-      notes: exchangeRateForm.notes.trim() || null,
-    };
-    const { error } = editingExchangeRateId
-      ? await supabase.from("manual_exchange_rates").update(payload).eq("id", editingExchangeRateId).eq("user_id", userId)
-      : await supabase.from("manual_exchange_rates").insert({ ...payload, user_id: userId });
-    setIsSavingExchangeRate(false);
-
-    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error) });
-
-    resetExchangeRateForm();
-    setMessage({ type: "success", text: isEditingExchangeRate ? "Tipo de cambio actualizado correctamente." : "Tipo de cambio guardado correctamente." });
-    await loadData();
-  }
-
-  function startEditingExchangeRate(rate: ManualExchangeRate) {
-    setMessage(null);
-    setEditingExchangeRateId(rate.id);
-    setExchangeRateForm({
-      rate_date: rate.rate_date,
-      from_currency: normalizeCurrency(rate.from_currency),
-      to_currency: normalizeCurrency(rate.to_currency),
-      rate: String(Number(rate.rate)),
-      notes: rate.notes ?? "",
-    });
-  }
-
-  function resetExchangeRateForm() {
-    setEditingExchangeRateId(null);
-    setExchangeRateForm({
-      rate_date: new Date().toISOString().slice(0, 10),
-      from_currency: "USD",
-      to_currency: DEFAULT_CURRENCY,
-      rate: "",
-      notes: "",
-    });
-  }
-
-  async function deleteExchangeRate(rate: ManualExchangeRate) {
-    setMessage(null);
-    if (!supabase) return;
-    const confirmed = window.confirm(
-      `Vas a borrar el tipo de cambio ${rate.from_currency} -> ${rate.to_currency} del ${formatDate(rate.rate_date, dateFormat)}.\n\nEsto solo afecta reportes visuales, no tus saldos originales.`
-    );
-    if (!confirmed) return setMessage({ type: "info", text: "No se borro ningun tipo de cambio." });
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para borrar tipos de cambio." });
-
-    const { error } = await supabase.from("manual_exchange_rates").delete().eq("id", rate.id).eq("user_id", userId);
-    if (error) return setMessage({ type: "error", text: getFriendlyExchangeRateError(error) });
-
-    if (editingExchangeRateId === rate.id) resetExchangeRateForm();
-    setMessage({ type: "success", text: "Tipo de cambio borrado correctamente." });
-    await loadData();
-  }
-
   async function updateAutomaticExchangeRates() {
     setMessage(null);
     if (!supabase) return setMessage({ type: "error", text: "Falta configurar Supabase para actualizar tipos de cambio automaticos." });
@@ -485,7 +372,7 @@ export function BasicReports() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          baseCurrency: automaticBaseCurrency,
+          baseCurrency,
         }),
       });
       const result = await response.json();
@@ -553,7 +440,7 @@ export function BasicReports() {
         <div className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold text-slate-950">Historial de patrimonio</h2>
           <p className="text-sm text-slate-600">
-            Guarda snapshots manuales por moneda para comparar tu evolucion. No hay conversion automatica entre monedas.
+            Guarda snapshots manuales por moneda para comparar tu evolucion. La conversion consolidada es solo visual y no modifica saldos originales.
           </p>
         </div>
 
@@ -606,25 +493,13 @@ export function BasicReports() {
 
       <section className="min-w-0 scroll-mt-24 space-y-4" id="tipos-cambio">
         <AutomaticExchangeRatesSection
-          baseCurrency={automaticBaseCurrency}
+          baseCurrency={baseCurrency}
           dateFormat={dateFormat}
           isUpdating={isUpdatingAutomaticExchangeRates}
           needsMigration={needsAutomaticExchangeRatesMigration}
-          onBaseCurrencyChange={setAutomaticBaseCurrency}
+          onBaseCurrencyChange={setBaseCurrency}
           onUpdate={updateAutomaticExchangeRates}
           rates={automaticExchangeRates}
-        />
-        <ExchangeRatesSection
-          editingRateId={editingExchangeRateId}
-          form={exchangeRateForm}
-          isSaving={isSavingExchangeRate}
-          onCancelEdit={resetExchangeRateForm}
-          onChange={setExchangeRateForm}
-          onDelete={deleteExchangeRate}
-          onEdit={startEditingExchangeRate}
-          onSave={saveExchangeRate}
-          dateFormat={dateFormat}
-          rates={exchangeRates.slice(0, 8)}
         />
       </section>
 
@@ -793,7 +668,7 @@ function buildSnapshotHistoryRows(snapshots: NetWorthSnapshot[]) {
 
 function buildConsolidatedNetWorth(
   rows: NetWorthSnapshotRow[],
-  rates: ManualExchangeRate[],
+  rates: AutomaticExchangeRate[],
   baseCurrency: string,
   snapshots: NetWorthSnapshot[]
 ): ConsolidatedNetWorthResult {
@@ -829,7 +704,7 @@ function buildConsolidatedNetWorth(
 
 function convertNetWorthAmounts(
   amounts: Array<{ currency: string; amount: number; sourceDate: string | null }>,
-  rates: ManualExchangeRate[],
+  rates: AutomaticExchangeRate[],
   baseCurrency: string
 ) {
   const normalizedBaseCurrency = normalizeCurrency(baseCurrency);
@@ -850,7 +725,7 @@ function convertNetWorthAmounts(
       };
     }
 
-    const rate = findLatestExchangeRate(rates, currency, baseCurrency);
+    const rate = findLatestAutomaticExchangeRate(rates, currency, baseCurrency);
     if (!rate) {
       missingRates.push(`${currency} -> ${baseCurrency}`);
       return {
@@ -863,7 +738,7 @@ function convertNetWorthAmounts(
       };
     }
 
-    const convertedAmount = row.amount * Number(rate.rate);
+    const convertedAmount = row.amount * rate.conversionRate;
     total += convertedAmount;
     return {
       currency,
@@ -909,21 +784,44 @@ function buildLatestSnapshotAmounts(snapshots: NetWorthSnapshot[]) {
     .sort((a, b) => normalizeCurrency(a.currency).localeCompare(normalizeCurrency(b.currency)));
 }
 
-function findLatestExchangeRate(rates: ManualExchangeRate[], fromCurrency: string, toCurrency: string) {
+function findLatestAutomaticExchangeRate(rates: AutomaticExchangeRate[], fromCurrency: string, toCurrency: string): AutomaticExchangeRateMatch | null {
   const normalizedFromCurrency = normalizeCurrency(fromCurrency);
   const normalizedToCurrency = normalizeCurrency(toCurrency);
 
-  return [...rates]
-    .filter(
-      (rate) =>
-        normalizeCurrency(rate.from_currency) === normalizedFromCurrency &&
-        normalizeCurrency(rate.to_currency) === normalizedToCurrency
-    )
+  const matches = rates
+    .map((rate) => {
+      const baseCurrency = normalizeCurrency(rate.base_currency);
+      const quoteCurrency = normalizeCurrency(rate.quote_currency);
+      const numericRate = Number(rate.rate);
+
+      if (!Number.isFinite(numericRate) || numericRate <= 0) return null;
+
+      if (baseCurrency === normalizedFromCurrency && quoteCurrency === normalizedToCurrency) {
+        return {
+          rate,
+          direction: "direct" as const,
+          conversionRate: numericRate,
+        };
+      }
+
+      if (baseCurrency === normalizedToCurrency && quoteCurrency === normalizedFromCurrency) {
+        return {
+          rate,
+          direction: "inverse" as const,
+          conversionRate: 1 / numericRate,
+        };
+      }
+
+      return null;
+    })
+    .filter((match): match is AutomaticExchangeRateMatch => Boolean(match))
     .sort((a, b) => {
-      const dateDiff = new Date(b.rate_date).getTime() - new Date(a.rate_date).getTime();
+      const dateDiff = new Date(b.rate.rate_date).getTime() - new Date(a.rate.rate_date).getTime();
       if (dateDiff !== 0) return dateDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    })[0] ?? null;
+      return new Date(b.rate.fetched_at).getTime() - new Date(a.rate.fetched_at).getTime();
+    });
+
+  return matches[0] ?? null;
 }
 
 function getLatestAutomaticRatesForBase(rates: AutomaticExchangeRate[], baseCurrency: string) {
@@ -1268,7 +1166,7 @@ function ConsolidatedNetWorthSection({
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-slate-950">Reporte patrimonial consolidado</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Conversion solo visual para reportes. Tus saldos originales no se modifican y solo se usan tasas directas.
+            Conversion solo visual para reportes. Tus saldos originales no se modifican y se usan tipos automaticos Frankfurter / ECB guardados para tu usuario.
           </p>
         </div>
         <label className="text-sm font-medium text-slate-700">
@@ -1290,7 +1188,7 @@ function ConsolidatedNetWorthSection({
 
       <div className="mt-5">
         <h3 className="text-sm font-semibold text-slate-950">Patrimonio actual por moneda</h3>
-        <p className="mt-1 text-xs text-slate-500">Si falta una tasa directa, esa moneda se excluye del total consolidado.</p>
+        <p className="mt-1 text-xs text-slate-500">Si falta una tasa automatica clara, esa moneda se excluye del total consolidado.</p>
       </div>
 
       <div className="mt-3 space-y-3">
@@ -1309,7 +1207,7 @@ function ConsolidatedNetWorthSection({
                     <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                     <p className="text-xs text-slate-500">
                       {row.rate
-                        ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date, dateFormat)}`
+                        ? formatAutomaticRateUsage(row.rate, dateFormat)
                         : "Sin conversion: ya esta en la moneda base"}
                     </p>
                   </>
@@ -1324,7 +1222,7 @@ function ConsolidatedNetWorthSection({
       <div className="mt-5 rounded-md border border-slate-200 p-4">
         <h3 className="font-semibold text-slate-950">Comparacion contra ultimo snapshot</h3>
         <p className="mt-1 text-sm text-slate-600">
-          Usa el ultimo snapshot disponible por moneda y las tasas manuales directas mas recientes hacia {result.baseCurrency}.
+          Usa el ultimo snapshot disponible por moneda y los tipos automaticos mas recientes disponibles para {result.baseCurrency}.
         </p>
 
         {result.snapshotComparison.rows.length === 0 ? (
@@ -1381,7 +1279,7 @@ function ConsolidatedNetWorthSection({
                           <p className="font-semibold text-slate-950"><MoneyAmount amount={row.convertedAmount} currency={result.baseCurrency} /></p>
                           <p className="text-xs text-slate-500">
                             {row.rate
-                              ? `Usando ${row.rate.from_currency} -> ${row.rate.to_currency}: ${formatExchangeRateValue(row.rate.rate)} del ${formatDate(row.rate.rate_date, dateFormat)}`
+                              ? formatAutomaticRateUsage(row.rate, dateFormat)
                               : "Sin conversion: ya esta en la moneda base"}
                           </p>
                         </>
@@ -1426,7 +1324,7 @@ function AutomaticExchangeRatesSection({
           <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Frankfurter / ECB</p>
           <h2 className="mt-1 text-xl font-semibold text-slate-950">Tipos de cambio automaticos</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Tasas diarias de referencia para consulta. No son precios en tiempo real y todavia no reemplazan tus tasas manuales en el calculo consolidado.
+            Fuente principal para el reporte patrimonial consolidado. Son tasas diarias de referencia, no precios en tiempo real.
           </p>
         </div>
         <div className="min-w-0 sm:w-64">
@@ -1471,138 +1369,8 @@ function AutomaticExchangeRatesSection({
           ))}
         </div>
         {latestRates.length === 0 ? (
-          <EmptyMessage text={needsMigration ? "La tabla de tipos automaticos aun no existe." : "Todavia no tienes tipos de cambio automaticos para esta moneda base."} />
+          <EmptyMessage text={needsMigration ? "La tabla de tipos automaticos aun no existe." : "Actualiza los tipos de cambio para calcular reportes consolidados."} />
         ) : null}
-      </div>
-    </div>
-  );
-}
-
-function ExchangeRatesSection({
-  dateFormat,
-  editingRateId,
-  form,
-  isSaving,
-  onCancelEdit,
-  onChange,
-  onDelete,
-  onEdit,
-  onSave,
-  rates,
-}: {
-  dateFormat: string;
-  editingRateId: string | null;
-  form: ExchangeRateForm;
-  isSaving: boolean;
-  onCancelEdit: () => void;
-  onChange: (form: ExchangeRateForm) => void;
-  onDelete: (rate: ManualExchangeRate) => void;
-  onEdit: (rate: ManualExchangeRate) => void;
-  onSave: () => void;
-  rates: ManualExchangeRate[];
-}) {
-  const isEditing = Boolean(editingRateId);
-
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="text-xl font-semibold text-slate-950">Tipos de cambio manuales</h2>
-        {isEditing ? (
-          <p className="text-sm font-medium text-blue-700">Estas editando una tasa existente. Guarda cambios o cancela para crear una nueva.</p>
-        ) : null}
-      </div>
-      <p className="mt-1 text-sm text-slate-600">Modelo: 1 unidad de moneda origen = tasa unidades de moneda destino.</p>
-
-      <div className="mt-4 grid gap-3">
-        <label className="text-sm font-medium text-slate-700">
-          Fecha
-          <input
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            onChange={(event) => onChange({ ...form, rate_date: event.target.value })}
-            type="date"
-            value={form.rate_date}
-          />
-        </label>
-        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-          <label className="text-sm font-medium text-slate-700">
-            Moneda origen
-            <CurrencySelect value={form.from_currency} onChange={(value) => onChange({ ...form, from_currency: value })} />
-          </label>
-          <label className="text-sm font-medium text-slate-700">
-            Moneda destino
-            <CurrencySelect value={form.to_currency} onChange={(value) => onChange({ ...form, to_currency: value })} />
-          </label>
-        </div>
-        <label className="text-sm font-medium text-slate-700">
-          Tasa
-          <input
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            min="0"
-            onChange={(event) => onChange({ ...form, rate: event.target.value })}
-            placeholder="Ej. 17.25"
-            step="0.0001"
-            type="number"
-            value={form.rate}
-          />
-        </label>
-        <label className="text-sm font-medium text-slate-700">
-          Notas opcionales
-          <input
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
-            onChange={(event) => onChange({ ...form, notes: event.target.value })}
-            placeholder="Ej. tipo de cambio de mi banco"
-            value={form.notes}
-          />
-        </label>
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-          <button
-            className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            disabled={isSaving}
-            onClick={onSave}
-            type="button"
-          >
-            {isSaving ? "Guardando..." : isEditing ? "Guardar cambios" : "Guardar tipo de cambio"}
-          </button>
-          {isEditing ? (
-            <button
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              disabled={isSaving}
-              onClick={onCancelEdit}
-              type="button"
-            >
-              Cancelar edicion
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <h3 className="text-sm font-semibold text-slate-950">Tipos recientes</h3>
-        <div className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-          {rates.map((rate) => (
-            <div className="min-w-0 rounded-md border border-slate-200 p-3" key={rate.id}>
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{formatDate(rate.rate_date, dateFormat)}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">
-                    {`${rate.from_currency} -> ${rate.to_currency}`}
-                  </p>
-                  <p className="text-sm text-slate-700">1 {rate.from_currency} = {formatExchangeRateValue(rate.rate)} {rate.to_currency}</p>
-                  <p className="text-xs text-slate-500">{rate.notes ? rate.notes : "Sin notas"}</p>
-                </div>
-                <div className="flex min-w-0 gap-2 sm:justify-end">
-                  <button className="rounded-md bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200" onClick={() => onEdit(rate)} type="button">
-                    Editar
-                  </button>
-                  <button className="rounded-md bg-red-50 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100" onClick={() => onDelete(rate)} type="button">
-                    Borrar
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-          {rates.length === 0 ? <EmptyMessage text="Todavia no tienes tipos de cambio manuales." /> : null}
-        </div>
       </div>
     </div>
   );
@@ -1799,6 +1567,19 @@ function formatExchangeRateValue(value: number) {
   });
 }
 
+function formatAutomaticRateUsage(match: AutomaticExchangeRateMatch, dateFormat?: string) {
+  const baseCurrency = normalizeCurrency(match.rate.base_currency);
+  const quoteCurrency = normalizeCurrency(match.rate.quote_currency);
+  const rateText = formatExchangeRateValue(Number(match.rate.rate));
+  const dateText = formatDate(match.rate.rate_date, dateFormat);
+
+  if (match.direction === "direct") {
+    return `Frankfurter / ECB ${baseCurrency} -> ${quoteCurrency}: ${rateText} del ${dateText}`;
+  }
+
+  return `Frankfurter / ECB ${baseCurrency} -> ${quoteCurrency}: ${rateText} del ${dateText}; conversion inversa en memoria`;
+}
+
 function getFriendlySnapshotError(error: string) {
   if (error.includes("net_worth_snapshots") || error.includes("schema cache")) {
     return "Falta crear la tabla de historial de patrimonio. Ejecuta docs/ADD_NET_WORTH_SNAPSHOTS.sql en Supabase.";
@@ -1807,37 +1588,6 @@ function getFriendlySnapshotError(error: string) {
     return "Ya existe un snapshot para esa fecha y moneda. Usa la confirmacion para actualizarlo.";
   }
   return `No se pudo completar la accion de historial de patrimonio. Detalle: ${error}`;
-}
-
-function getFriendlyExchangeRateError(error: SupabaseErrorLike | string) {
-  const code = typeof error === "string" ? "" : error.code ?? "";
-  const message = typeof error === "string" ? error : error.message ?? "";
-  const details = typeof error === "string" ? "" : error.details ?? "";
-  const fullError = `${message} ${details}`.toLowerCase();
-
-  if (code === "23505" || fullError.includes("manual_exchange_rates_unique_user_date_pair")) {
-    return "Ya existe un tipo de cambio para esa fecha, moneda origen y moneda destino.";
-  }
-  if (code === "23514" && fullError.includes("manual_exchange_rates_different_currencies")) {
-    return "La moneda origen y destino deben ser diferentes.";
-  }
-  if (code === "23514" || fullError.includes("rate > 0")) {
-    return "La tasa debe ser mayor a 0.";
-  }
-  if (
-    code === "42P01" ||
-    fullError.includes('relation "manual_exchange_rates" does not exist') ||
-    fullError.includes("schema cache")
-  ) {
-    return "Falta crear la tabla de tipos de cambio manuales. Ejecuta docs/ADD_MANUAL_EXCHANGE_RATES.sql en Supabase.";
-  }
-  if (fullError.includes("duplicate") || fullError.includes("unique")) {
-    return "Ya existe un tipo de cambio para esa fecha, moneda origen y moneda destino.";
-  }
-  if (fullError.includes("check")) {
-    return "Revisa el tipo de cambio: la tasa debe ser mayor a 0 y las monedas deben ser diferentes.";
-  }
-  return `No se pudo completar la accion de tipos de cambio. Detalle: ${message || "Error desconocido"}`;
 }
 
 function getFriendlyAutomaticExchangeRateError(error: SupabaseErrorLike | string) {

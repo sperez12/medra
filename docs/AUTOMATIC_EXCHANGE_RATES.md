@@ -1,18 +1,21 @@
 # Tipos de cambio automaticos
 
 Fase: v0.10.0-automatic-exchange-rates  
-Fuente inicial: Frankfurter / ECB  
-SQL pendiente: `docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql`
+Fuente principal: Frankfurter / ECB
+SQL: `docs/ADD_AUTOMATIC_EXCHANGE_RATES.sql`
 
 ## Objetivo
 
-Medra ya permite guardar tipos de cambio manuales para reportes patrimoniales consolidados. Esta fase agrega una segunda capa: tipos de cambio automaticos de referencia diaria.
+Medra usa tipos de cambio automaticos de referencia diaria como fuente principal para el reporte patrimonial consolidado.
+
+Los tipos de cambio manuales quedan como datos legacy/respaldo tecnico. No se muestran en la interfaz principal de Reportes y no se borran.
 
 Importante:
 
 - No modifica saldos originales.
 - No convierte cuentas, tarjetas, inversiones, metas, gastos ni snapshots.
-- No reemplaza los tipos de cambio manuales.
+- No borra tipos de cambio manuales existentes.
+- No muestra gestion manual de tipos de cambio en la UI principal.
 - No crea cron jobs.
 - No usa API keys.
 - No usa `service_role`.
@@ -44,7 +47,7 @@ Por ahora se usan las mismas monedas soportadas por Medra:
 
 ## Base de datos
 
-La nueva tabla propuesta es `public.exchange_rates`.
+La tabla es `public.exchange_rates`.
 
 Campos principales:
 
@@ -60,6 +63,8 @@ Restriccion importante:
 
 - Solo puede existir una tasa por usuario + moneda base + moneda destino + fecha + fuente.
 
+El SQL no borra datos existentes, no modifica `manual_exchange_rates` y no migra tasas manuales. La tabla `manual_exchange_rates` puede seguir existiendo como respaldo tecnico/historico, pero la interfaz principal usa `exchange_rates`.
+
 ## SQL a ejecutar
 
 En Supabase:
@@ -71,8 +76,6 @@ En Supabase:
 5. Pegalo en SQL Editor.
 6. Ejecuta el SQL una sola vez.
 7. Confirma que la tabla `exchange_rates` existe y que RLS esta activo.
-
-El SQL no borra datos existentes, no modifica `manual_exchange_rates` y no migra tasas manuales.
 
 ## Seguridad
 
@@ -93,7 +96,7 @@ En `/reportes`, la seccion "Tipos de cambio automaticos" mostrara:
 
 > Para guardar tipos de cambio automaticos, ejecuta la migracion pendiente.
 
-Los reportes manuales y el patrimonio consolidado con tasas manuales siguen funcionando.
+El resto de Reportes sigue visible. El reporte consolidado puede mostrar avisos de tasas faltantes hasta que existan tasas automaticas para la moneda base seleccionada.
 
 ## Como probar antes de ejecutar SQL
 
@@ -118,6 +121,7 @@ Los reportes manuales y el patrimonio consolidado con tasas manuales siguen func
    - fecha de tasa;
    - ultima actualizacion;
    - tasas disponibles para la moneda base seleccionada.
+8. El reporte patrimonial consolidado debe usar esas tasas automaticas.
 
 ## Como probar en produccion
 
@@ -127,22 +131,43 @@ Los reportes manuales y el patrimonio consolidado con tasas manuales siguen func
 4. Inicia sesion.
 5. Ve a `/reportes`.
 6. Actualiza tipos de cambio automaticos.
-7. Revisa que no se modifiquen saldos, snapshots ni tasas manuales.
+7. Revisa que el reporte consolidado use las tasas automaticas guardadas.
+8. Revisa que no se modifiquen saldos, snapshots ni tasas manuales legacy.
+
+## Como se calcula la conversion consolidada
+
+La tabla guarda tasas como:
+
+> 1 `base_currency` = `rate` `quote_currency`
+
+Ejemplos:
+
+- Si existe `USD -> MXN = 17.25` y se convierte USD a MXN, Medra multiplica.
+- Si existe `MXN -> USD = 0.058` y se convierte USD a MXN, Medra divide en runtime.
+
+La inversion solo ocurre en memoria para el reporte. No se guarda una tasa invertida en la base de datos.
+
+Si no existe una tasa directa o inversa clara para convertir una moneda hacia la moneda base, Medra:
+
+- muestra aviso de tasa faltante;
+- excluye esa moneda del total consolidado;
+- no inventa valores;
+- no modifica saldos originales.
 
 ## Limitaciones actuales
 
 - No hay actualizacion automatica programada.
 - No hay Vercel Cron.
 - No hay `CRON_SECRET`.
-- No se usan estas tasas en el calculo consolidado todavia.
-- No se invierten tasas automaticamente.
+- No se usan estas tasas en saldos originales.
+- No se guardan tasas invertidas automaticamente.
 - No hay historico avanzado ni graficas.
 - Si Frankfurter no responde, se muestra error amigable y no se rompe Reportes.
 
 ## Futuras fases recomendadas
 
-1. Permitir elegir en reportes consolidados entre tasas manuales y automaticas.
-2. Agregar Vercel Cron con `CRON_SECRET`.
-3. Guardar snapshots consolidados usando fuente seleccionada, sin modificar snapshots originales.
-4. Agregar auditoria visual de ultima tasa usada por moneda.
-5. Evaluar fallback si falta tasa directa, sin inventar conversiones silenciosas.
+1. Agregar Vercel Cron con `CRON_SECRET`.
+2. Guardar snapshots consolidados usando fuente automatica, sin modificar snapshots originales por moneda.
+3. Agregar auditoria visual de ultima tasa usada por moneda.
+4. Evaluar fallback controlado si falta tasa directa/inversa, sin inventar conversiones silenciosas.
+5. Decidir si los tipos manuales legacy se exportan, archivan visualmente o se eliminan de documentacion futura sin borrar datos.
