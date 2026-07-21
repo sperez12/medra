@@ -1,6 +1,6 @@
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { formatCurrency, normalizeCurrency } from "@/lib/currencies";
-import { getCurrentCardPeriod } from "@/lib/periods";
+import { getCardPaymentDueContext, getDayDifference, startOfDay } from "@/lib/periods";
 import type {
   Account,
   AccountMovement,
@@ -63,8 +63,6 @@ type BuildFinancialAlertsInput = {
   preferences?: Partial<AlertPreferenceValues> | null;
   today?: Date;
 };
-
-const MS_PER_DAY = 86400000;
 
 export const financialAlertSeverityLabels: Record<FinancialAlertSeverity, string> = {
   critical: "Crítica",
@@ -189,11 +187,11 @@ function buildCardPaymentAlert(
   preferences: AlertPreferenceValues,
   today: Date
 ): CalculatedFinancialAlert | null {
-  const currentPeriod = getCurrentCardPeriod(card.statement_cut_day, today);
-  const spent = sumExpensesForCardPeriod(expenses, card.id, currentPeriod.start, currentPeriod.end);
-  const paid = sumPaymentsForCardPeriod(payments, card.id, currentPeriod.start, currentPeriod.end);
+  const dueContext = getCardPaymentDueContext(card.statement_cut_day, card.payment_due_day, today);
+  const spent = sumExpensesForCardPeriod(expenses, card.id, dueContext.payablePeriod.start, dueContext.payablePeriod.end);
+  const paid = sumPaymentsForCardPeriod(payments, card.id, dueContext.paymentPeriod.start, dueContext.paymentPeriod.end);
   const pending = Math.max(spent - paid, 0);
-  const daysToPayment = getDaysUntilDay(card.payment_due_day, today);
+  const daysToPayment = dueContext.daysUntilDue;
 
   if (pending <= 0 || daysToPayment < 0 || daysToPayment > preferences.card_payment_warning_days) {
     return null;
@@ -206,7 +204,7 @@ function buildCardPaymentAlert(
     type: "card_payment",
     severity: daysToPayment <= 2 ? "critical" : "warning",
     title: daysToPayment === 0 ? "Pago de tarjeta vence hoy" : "Pago de tarjeta próximo",
-    description: `${dueText}. Saldo pendiente estimado: ${formatCurrency(pending, card.currency)}.`,
+    description: `${dueText}. Saldo pendiente estimado del periodo a pagar: ${formatCurrency(pending, card.currency)}.`,
     amount: pending,
     currency: card.currency,
     href: "/tarjetas",
@@ -366,39 +364,6 @@ function sumPaymentsForCardPeriod(payments: Payment[], cardId: string, start: Da
       return payment.credit_card_id === cardId && paymentDate >= start && paymentDate <= end;
     })
     .reduce((total, payment) => total + Number(payment.amount), 0);
-}
-
-function getDaysUntilDay(day: number, fromDate = new Date()) {
-  const today = startOfDay(fromDate);
-  const target = getNextDateForDay(day, today);
-
-  return getDayDifference(today, target);
-}
-
-function getNextDateForDay(day: number, fromDate = new Date()) {
-  const today = startOfDay(fromDate);
-  const currentMonthTarget = dateWithSafeDay(today.getFullYear(), today.getMonth(), day);
-
-  // Crear la fecha desde year/month/day evita saltos raros en meses cortos o al cruzar diciembre/enero.
-  return currentMonthTarget >= today
-    ? currentMonthTarget
-    : dateWithSafeDay(today.getFullYear(), today.getMonth() + 1, day);
-}
-
-function dateWithSafeDay(year: number, month: number, day: number) {
-  return new Date(year, month, Math.min(day, daysInMonth(year, month)));
-}
-
-function daysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function getDayDifference(start: Date, end: Date) {
-  return Math.round((startOfDay(end).getTime() - startOfDay(start).getTime()) / MS_PER_DAY);
 }
 
 function getMonthKey(date: Date) {

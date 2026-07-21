@@ -5,6 +5,7 @@ import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
+import { getDaysUntilDay } from "@/lib/periods";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   getDefaultPeriodFilter,
@@ -367,15 +368,15 @@ export function CardManager() {
                 <div className="grid min-w-0 gap-2 sm:grid-cols-2">
                   <StatusBox
                     label="Corte"
-                    text={`${daysToCut} dia(s) restantes`}
+                    text={formatCardDateCountdown(daysToCut)}
                     tone={cutStatus.tone}
-                    detail={`Dia ${card.statement_cut_day}`}
+                    detail={`Día ${card.statement_cut_day}`}
                   />
                   <StatusBox
                     label="Fecha limite de pago"
-                    text={`${daysToPayment} dia(s) restantes`}
+                    text={formatCardDateCountdown(daysToPayment)}
                     tone={paymentStatus.tone}
-                    detail={`Dia ${card.payment_due_day}`}
+                    detail={`Día ${card.payment_due_day}`}
                   />
                 </div>
               </div>
@@ -453,21 +454,10 @@ function isDayBetween1And31(value: string) {
   return Number.isInteger(day) && day >= 1 && day <= 31;
 }
 
-function getDaysUntilDay(day: number) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const target = new Date(today.getFullYear(), today.getMonth(), Math.min(day, daysInMonth(today)));
-  if (target < today) {
-    target.setMonth(target.getMonth() + 1);
-    target.setDate(Math.min(day, daysInMonth(target)));
-  }
-
-  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
-}
-
-function daysInMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+function formatCardDateCountdown(days: number) {
+  if (days === 0) return "vence hoy";
+  if (days === 1) return "vence mañana";
+  return `${days} días restantes`;
 }
 
 function getUsageStatus(percent: number) {
