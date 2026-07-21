@@ -3,6 +3,7 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
+import { calculateCardPaymentDueBalance } from "@/lib/card-payment-due";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
 import { getDaysUntilDay } from "@/lib/periods";
@@ -318,11 +319,15 @@ export function CardManager() {
           const total = getSelectedPeriodTotal(card);
           const paid = getSelectedPeriodPayments(card);
           const pending = Math.max(total - paid, 0);
+          const pendingPeriodLabel = periodFilter.mode === "card_current"
+            ? "Saldo pendiente del periodo actual"
+            : "Saldo pendiente del periodo mostrado";
           const limit = Number(card.credit_limit);
           const available = Math.max(limit - pending, 0);
           const usedPercent = limit > 0 ? Math.min((pending / limit) * 100, 100) : 0;
+          const dueBalance = calculateCardPaymentDueBalance({ card, expenses, payments });
           const daysToCut = getDaysUntilDay(card.statement_cut_day);
-          const daysToPayment = getDaysUntilDay(card.payment_due_day);
+          const daysToPayment = dueBalance.context.daysUntilDue;
           const usageStatus = getUsageStatus(usedPercent);
           const cutStatus = getDateStatus(daysToCut);
           const paymentStatus = getDateStatus(daysToPayment);
@@ -368,7 +373,7 @@ export function CardManager() {
                 <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                   <Metric label="Gasto del periodo" value={<MoneyAmount amount={total} currency={card.currency} />} />
                   <Metric label="Pagos del periodo" value={<MoneyAmount amount={paid} currency={card.currency} />} />
-                  <Metric label="Saldo pendiente estimado" value={<MoneyAmount amount={pending} currency={card.currency} />} strong />
+                  <Metric label={pendingPeriodLabel} value={<MoneyAmount amount={pending} currency={card.currency} />} strong />
                   <Metric label="Disponible estimado" value={<MoneyAmount amount={available} currency={card.currency} />} />
                 </div>
 
@@ -383,22 +388,61 @@ export function CardManager() {
                 </div>
 
                 <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                  <p className="font-medium text-slate-700">Periodo actual</p>
+                  <p className="font-medium text-slate-700">
+                    {periodFilter.mode === "card_current" ? "Periodo actual abierto" : "Periodo mostrado"}
+                  </p>
                   <p className="mt-1">
                     {formatDateForPreference(period.start, dateFormat)} a {formatDateForPreference(period.end, dateFormat)}
                   </p>
                 </div>
 
+                <div className="rounded-md border border-teal-100 bg-teal-50/60 p-3 text-sm text-slate-700">
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-800">Próximo pago</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Corresponde al periodo cerrado anterior, no al periodo abierto actual.
+                      </p>
+                    </div>
+                    <StatusPill label={formatPaymentDueCountdown(daysToPayment)} tone={paymentStatus.tone} />
+                  </div>
+
+                  <dl className="mt-3 grid min-w-0 gap-2 text-xs text-slate-600">
+                    <PaymentDueRow
+                      label="Fecha límite"
+                      value={formatDateForPreference(dueBalance.context.dueDate, dateFormat)}
+                    />
+                    <PaymentDueRow
+                      label="Periodo a pagar"
+                      value={`${formatDateForPreference(dueBalance.context.payablePeriod.start, dateFormat)} a ${formatDateForPreference(dueBalance.context.payablePeriod.end, dateFormat)}`}
+                    />
+                    <PaymentDueRow
+                      label="Saldo a pagar estimado"
+                      value={<MoneyAmount amount={dueBalance.pending} currency={card.currency} />}
+                    />
+                  </dl>
+
+                  {dueBalance.pending > 0 ? (
+                    <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                      Saldo pendiente para esta fecha límite: <MoneyAmount amount={dueBalance.pending} currency={card.currency} />.
+                    </p>
+                  ) : (
+                    <p className="mt-3 rounded-md border border-teal-100 bg-white px-3 py-2 text-xs text-teal-700">
+                      No hay saldo pendiente para esta fecha límite.
+                    </p>
+                  )}
+                </div>
+
                 <div className="grid min-w-0 gap-2 sm:grid-cols-2">
                   <StatusBox
                     label="Corte"
-                    text={formatCardDateCountdown(daysToCut)}
+                    text={formatRemainingDays(daysToCut)}
                     tone={cutStatus.tone}
                     detail={`Día ${card.statement_cut_day}`}
                   />
                   <StatusBox
-                    label="Fecha limite de pago"
-                    text={formatCardDateCountdown(daysToPayment)}
+                    label="Fecha límite de pago"
+                    text={formatPaymentDueCountdown(daysToPayment)}
                     tone={paymentStatus.tone}
                     detail={`Día ${card.payment_due_day}`}
                   />
@@ -478,9 +522,15 @@ function isDayBetween1And31(value: string) {
   return Number.isInteger(day) && day >= 1 && day <= 31;
 }
 
-function formatCardDateCountdown(days: number) {
+function formatPaymentDueCountdown(days: number) {
   if (days === 0) return "vence hoy";
   if (days === 1) return "vence mañana";
+  return `vence en ${days} días`;
+}
+
+function formatRemainingDays(days: number) {
+  if (days === 0) return "hoy";
+  if (days === 1) return "1 día restante";
   return `${days} días restantes`;
 }
 
@@ -526,6 +576,15 @@ function Metric({ label, value, strong = false }: { label: string; value: ReactN
       <p className={`mt-1 text-base ${strong ? "font-bold text-slate-950" : "font-semibold text-slate-800"}`}>
         {value}
       </p>
+    </div>
+  );
+}
+
+function PaymentDueRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-md bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="min-w-0 font-medium text-slate-800 sm:text-right">{value}</dd>
     </div>
   );
 }
