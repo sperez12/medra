@@ -305,6 +305,11 @@ export function ExpenseManager() {
                 </option>
               ))}
             </select>
+            {!isLoading && cards.length === 0 ? (
+              <span className="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                No tienes tarjetas activas para registrar este movimiento.
+              </span>
+            ) : null}
           </label>
 
           <label className="block">

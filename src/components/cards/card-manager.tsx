@@ -270,13 +270,18 @@ export function CardManager() {
             </select>
           </label>
           <TextInput label="Color opcional" type="color" value={form.color} onChange={(value) => setForm({ ...form, color: value })} />
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              checked={form.is_active}
-              onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
-              type="checkbox"
-            />
-            Activa
+          <label className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <span className="flex items-center gap-2 font-medium">
+              <input
+                checked={form.is_active}
+                onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
+                type="checkbox"
+              />
+              Tarjeta activa
+            </span>
+            <span className="mt-1 block text-xs text-slate-500">
+              Las tarjetas inactivas se conservan para historial, pero no aparecen al crear nuevos gastos o pagos.
+            </span>
           </label>
         </div>
         <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
@@ -323,7 +328,14 @@ export function CardManager() {
           const paymentStatus = getDateStatus(daysToPayment);
 
           return (
-            <article className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={card.id}>
+            <article
+              className={`rounded-lg border p-5 ${
+                card.is_active
+                  ? "border-slate-200 bg-white shadow-sm"
+                  : "border-slate-200 bg-slate-50 shadow-none"
+              }`}
+              key={card.id}
+            >
               <div className="flex flex-col gap-4">
                 <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -338,8 +350,20 @@ export function CardManager() {
                       Limite: <MoneyAmount amount={limit} currency={card.currency} />
                     </p>
                   </div>
-                  <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
+                  <div className="flex min-w-0 flex-wrap gap-2 sm:justify-end">
+                    <StatusPill
+                      label={card.is_active ? "Activa" : "Inactiva"}
+                      tone={card.is_active ? "success" : "neutral"}
+                    />
+                    <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
+                  </div>
                 </div>
+
+                {!card.is_active ? (
+                  <p className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
+                    No aparece en formularios de nuevos gastos o pagos.
+                  </p>
+                ) : null}
 
                 <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                   <Metric label="Gasto del periodo" value={<MoneyAmount amount={total} currency={card.currency} />} />
@@ -511,12 +535,13 @@ function StatusPill({
   tone,
 }: {
   label: string;
-  tone: "success" | "warning" | "danger";
+  tone: "success" | "warning" | "danger" | "neutral";
 }) {
   const styles = {
     success: "bg-teal-50 text-teal-700 border-teal-200",
     warning: "bg-amber-50 text-amber-800 border-amber-200",
     danger: "bg-red-50 text-red-700 border-red-200",
+    neutral: "bg-slate-100 text-slate-600 border-slate-200",
   };
 
   return (
