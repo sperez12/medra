@@ -36,6 +36,24 @@ type Message = {
   text: string;
 };
 
+type CardSummary = {
+  card: CreditCard;
+  period: { start: Date; end: Date };
+  total: number;
+  paid: number;
+  pending: number;
+  pendingPeriodLabel: string;
+  limit: number;
+  available: number;
+  usedPercent: number;
+  dueBalance: ReturnType<typeof calculateCardPaymentDueBalance>;
+  daysToCut: number;
+  daysToPayment: number;
+  usageStatus: ReturnType<typeof getUsageStatus>;
+  cutStatus: ReturnType<typeof getDateStatus>;
+  paymentStatus: ReturnType<typeof getDateStatus>;
+};
+
 export function CardManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
@@ -327,9 +345,66 @@ export function CardManager() {
       .reduce((total, payment) => total + Number(payment.amount), 0);
   }
 
+  const cardSummaries: CardSummary[] = cards
+    .map((card) => {
+      const period = getRangeForCard(periodFilter, card);
+      const total = getSelectedPeriodTotal(card);
+      const paid = getSelectedPeriodPayments(card);
+      const pending = Math.max(total - paid, 0);
+      const pendingPeriodLabel = periodFilter.mode === "card_current"
+        ? "Saldo pendiente del periodo actual"
+        : "Saldo pendiente del periodo mostrado";
+      const limit = Number(card.credit_limit);
+      const available = Math.max(limit - pending, 0);
+      const usedPercent = limit > 0 ? Math.min((pending / limit) * 100, 100) : 0;
+      const dueBalance = calculateCardPaymentDueBalance({ card, expenses, payments });
+      const daysToCut = getDaysUntilDay(card.statement_cut_day);
+      const daysToPayment = dueBalance.context.daysUntilDue;
+      const usageStatus = getUsageStatus(usedPercent);
+      const cutStatus = getDateStatus(daysToCut);
+      const paymentStatus = getDateStatus(daysToPayment);
+
+      return {
+        card,
+        period,
+        total,
+        paid,
+        pending,
+        pendingPeriodLabel,
+        limit,
+        available,
+        usedPercent,
+        dueBalance,
+        daysToCut,
+        daysToPayment,
+        usageStatus,
+        cutStatus,
+        paymentStatus,
+      };
+    })
+    .sort(sortCardSummaries);
+
   return (
-    <div className="grid max-w-full min-w-0 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-      <div className="min-w-0 space-y-4">
+    <div className="max-w-full min-w-0 space-y-5">
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold text-slate-950">Tarjetas</h1>
+          <p className="mt-2 text-slate-600">
+            Crea, edita y revisa el gasto del periodo actual de cada tarjeta.
+          </p>
+        </div>
+        {!isCreateFormOpen ? (
+          <button
+            className="w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 sm:w-auto"
+            onClick={openCreateForm}
+            type="button"
+          >
+            Nueva tarjeta
+          </button>
+        ) : null}
+      </div>
+
+      <div className="space-y-4">
         {isCreateFormOpen ? (
           <CardForm
             cancelLabel="Cancelar"
@@ -340,29 +415,15 @@ export function CardManager() {
             submitLabel="Guardar tarjeta"
             title="Nueva tarjeta"
           />
-        ) : (
-          <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-            <p className="text-sm font-medium text-teal-700">Gestión de tarjetas</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">Tarjetas de crédito</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Crea tarjetas nuevas desde aquí. Para editar una tarjeta existente, usa el botón dentro de su propia tarjeta.
-            </p>
-            <button
-              className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
-              onClick={openCreateForm}
-              type="button"
-            >
-              Nueva tarjeta
-            </button>
-          </section>
-        )}
+        ) : null}
 
         {message ? <StatusMessage message={message} /> : null}
-      </div>
 
-      <div className="space-y-4">
         <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
-        <p className="text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
+        <div className="space-y-1 text-sm text-slate-600">
+          <p>Vista actual: {getPeriodLabel(periodFilter)}.</p>
+          <p>Ordenadas automáticamente: activas primero, mayor saldo del periodo y mayor uso.</p>
+        </div>
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         {isLoading ? (
@@ -371,24 +432,23 @@ export function CardManager() {
           </div>
         ) : null}
 
-        {cards.map((card) => {
-          const period = getRangeForCard(periodFilter, card);
-          const total = getSelectedPeriodTotal(card);
-          const paid = getSelectedPeriodPayments(card);
-          const pending = Math.max(total - paid, 0);
-          const pendingPeriodLabel = periodFilter.mode === "card_current"
-            ? "Saldo pendiente del periodo actual"
-            : "Saldo pendiente del periodo mostrado";
-          const limit = Number(card.credit_limit);
-          const available = Math.max(limit - pending, 0);
-          const usedPercent = limit > 0 ? Math.min((pending / limit) * 100, 100) : 0;
-          const dueBalance = calculateCardPaymentDueBalance({ card, expenses, payments });
-          const daysToCut = getDaysUntilDay(card.statement_cut_day);
-          const daysToPayment = dueBalance.context.daysUntilDue;
-          const usageStatus = getUsageStatus(usedPercent);
-          const cutStatus = getDateStatus(daysToCut);
-          const paymentStatus = getDateStatus(daysToPayment);
-
+        {cardSummaries.map(({
+          available,
+          card,
+          cutStatus,
+          daysToCut,
+          daysToPayment,
+          dueBalance,
+          limit,
+          paid,
+          paymentStatus,
+          pending,
+          pendingPeriodLabel,
+          period,
+          total,
+          usageStatus,
+          usedPercent,
+        }) => {
           return (
             <article
               className={`rounded-lg border p-5 ${
@@ -543,7 +603,7 @@ export function CardManager() {
 
         {!isLoading && cards.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
-            Todavía no hay tarjetas. Crea la primera desde el formulario para empezar a ver tu resumen financiero.
+            Todavía no hay tarjetas. Usa Nueva tarjeta para crear la primera y empezar a ver tu resumen financiero.
           </div>
         ) : null}
         </div>
@@ -687,6 +747,28 @@ function validateCardForm(form: CardFormState) {
   if (!isDayBetween1And31(form.payment_due_day)) return "El dia limite de pago debe estar entre 1 y 31.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   return "";
+}
+
+function sortCardSummaries(a: CardSummary, b: CardSummary) {
+  if (a.card.is_active !== b.card.is_active) {
+    return a.card.is_active ? -1 : 1;
+  }
+
+  if (!a.card.is_active && !b.card.is_active) {
+    return compareCardNames(a.card, b.card);
+  }
+
+  const pendingDifference = b.pending - a.pending;
+  if (Math.abs(pendingDifference) > 0.001) return pendingDifference;
+
+  const usageDifference = b.usedPercent - a.usedPercent;
+  if (Math.abs(usageDifference) > 0.001) return usageDifference;
+
+  return compareCardNames(a.card, b.card);
+}
+
+function compareCardNames(a: CreditCard, b: CreditCard) {
+  return a.name.localeCompare(b.name, "es", { sensitivity: "base" });
 }
 
 function isDayBetween1And31(value: string) {
