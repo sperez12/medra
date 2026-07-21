@@ -29,6 +29,8 @@ const emptyForm = {
   is_active: true,
 };
 
+type CardFormState = typeof emptyForm;
+
 type Message = {
   type: "success" | "error" | "info";
   text: string;
@@ -40,8 +42,11 @@ export function CardManager() {
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState<CardFormState>(emptyForm);
+  const [editForm, setEditForm] = useState<CardFormState>(emptyForm);
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [togglingCardId, setTogglingCardId] = useState<string | null>(null);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,7 +57,7 @@ export function CardManager() {
 
   useEffect(() => {
     if (preferencesLoaded) {
-      setForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
+      setCreateForm((currentForm) => currentForm.currency === DEFAULT_CURRENCY ? { ...currentForm, currency: preferredCurrency } : currentForm);
     }
   }, [preferencesLoaded, preferredCurrency]);
 
@@ -105,7 +110,21 @@ export function CardManager() {
     setIsLoading(false);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function openCreateForm() {
+    setEditingCardId(null);
+    setEditForm(emptyForm);
+    setCreateForm({ ...emptyForm, currency: preferredCurrency });
+    setIsCreateFormOpen(true);
+    setMessage(null);
+  }
+
+  function cancelCreateForm() {
+    setIsCreateFormOpen(false);
+    setCreateForm({ ...emptyForm, currency: preferredCurrency });
+    setMessage(null);
+  }
+
+  async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
 
@@ -120,51 +139,30 @@ export function CardManager() {
       return;
     }
 
-    const validationError = validateCardForm(form);
+    const validationError = validateCardForm(createForm);
     if (validationError) {
       setMessage({ type: "error", text: validationError });
       return;
     }
 
-    const payload = {
-      user_id: userData.user.id,
-      name: form.name.trim(),
-      bank: form.bank.trim(),
-      last_four_digits: form.last_four_digits.trim(),
-      credit_limit: Number(form.credit_limit),
-      statement_cut_day: Number(form.statement_cut_day),
-      payment_due_day: Number(form.payment_due_day),
-      currency: normalizeCurrency(form.currency),
-      color: form.color || null,
-      is_active: form.is_active,
-    };
-
-    const request = editingId
-      ? supabase
-          .from("credit_cards")
-          .update(payload)
-          .eq("id", editingId)
-          .eq("user_id", userData.user.id)
-      : supabase.from("credit_cards").insert(payload);
-
-    const { error } = await request;
+    const { error } = await supabase.from("credit_cards").insert(buildCardPayload(createForm, userData.user.id));
     if (error) {
       setMessage({ type: "error", text: getFriendlyCardError(error.message) });
       return;
     }
 
-    setForm(emptyForm);
-    setEditingId(null);
-    setMessage({
-      type: "success",
-      text: editingId ? "Tarjeta actualizada correctamente." : "Tarjeta creada correctamente.",
-    });
+    setCreateForm({ ...emptyForm, currency: preferredCurrency });
+    setIsCreateFormOpen(false);
+    setMessage({ type: "success", text: "Tarjeta creada correctamente." });
     await loadData();
   }
 
   function startEdit(card: CreditCard) {
-    setEditingId(card.id);
-    setForm({
+    setIsCreateFormOpen(false);
+    setCreateForm({ ...emptyForm, currency: preferredCurrency });
+    setEditingCardId(card.id);
+    setMessage(null);
+    setEditForm({
       name: card.name,
       bank: card.bank,
       last_four_digits: card.last_four_digits,
@@ -175,6 +173,86 @@ export function CardManager() {
       color: card.color ?? "",
       is_active: card.is_active,
     });
+  }
+
+  function cancelEdit() {
+    setEditingCardId(null);
+    setEditForm(emptyForm);
+    setMessage(null);
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>, cardId: string) {
+    event.preventDefault();
+    setMessage(null);
+
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de guardar tarjetas." });
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "error", text: "Primero inicia sesion para guardar tarjetas." });
+      return;
+    }
+
+    const validationError = validateCardForm(editForm);
+    if (validationError) {
+      setMessage({ type: "error", text: validationError });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("credit_cards")
+      .update(buildCardPayload(editForm, userData.user.id))
+      .eq("id", cardId)
+      .eq("user_id", userData.user.id);
+
+    if (error) {
+      setMessage({ type: "error", text: getFriendlyCardError(error.message) });
+      return;
+    }
+
+    setEditingCardId(null);
+    setEditForm(emptyForm);
+    setMessage({ type: "success", text: "Tarjeta actualizada correctamente." });
+    await loadData();
+  }
+
+  async function toggleCardActive(card: CreditCard) {
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta configurar Supabase antes de actualizar la tarjeta." });
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      setMessage({ type: "error", text: "Primero inicia sesion para actualizar tarjetas." });
+      return;
+    }
+
+    setMessage(null);
+    setTogglingCardId(card.id);
+
+    const nextIsActive = !card.is_active;
+    const { error } = await supabase
+      .from("credit_cards")
+      .update({ is_active: nextIsActive })
+      .eq("id", card.id)
+      .eq("user_id", userData.user.id);
+
+    setTogglingCardId(null);
+
+    if (error) {
+      setMessage({ type: "error", text: "No se pudo actualizar el estado de la tarjeta. Intenta de nuevo." });
+      return;
+    }
+
+    setMessage({
+      type: "success",
+      text: nextIsActive ? "Tarjeta activada correctamente." : "Tarjeta inactivada correctamente.",
+    });
+    await loadData();
   }
 
   async function deleteCard(id: string) {
@@ -212,6 +290,10 @@ export function CardManager() {
       type: error ? "error" : "success",
       text: error ? getFriendlyCardError(error.message) : "Tarjeta borrada correctamente.",
     });
+    if (!error && editingCardId === id) {
+      setEditingCardId(null);
+      setEditForm(emptyForm);
+    }
     await loadData();
   }
 
@@ -247,61 +329,36 @@ export function CardManager() {
 
   return (
     <div className="grid max-w-full min-w-0 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
-      <form className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={handleSubmit}>
-        <h2 className="text-lg font-semibold text-slate-950">
-          {editingId ? "Editar tarjeta" : "Nueva tarjeta"}
-        </h2>
-        <div className="mt-4 grid gap-4">
-          <TextInput label="Nombre" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
-          <TextInput label="Banco" value={form.bank} onChange={(value) => setForm({ ...form, bank: value })} />
-          <TextInput label="Ultimos 4 digitos" inputMode="numeric" maxLength={4} value={form.last_four_digits} onChange={(value) => setForm({ ...form, last_four_digits: value })} />
-          <TextInput label="Limite de credito" min="0.01" step="0.01" type="number" value={form.credit_limit} onChange={(value) => setForm({ ...form, credit_limit: value })} />
-          <TextInput label="Dia de corte" max="31" min="1" type="number" value={form.statement_cut_day} onChange={(value) => setForm({ ...form, statement_cut_day: value })} />
-          <TextInput label="Dia limite de pago" max="31" min="1" type="number" value={form.payment_due_day} onChange={(value) => setForm({ ...form, payment_due_day: value })} />
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">Moneda</span>
-            <select
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-              onChange={(event) => setForm({ ...form, currency: event.target.value })}
-              value={form.currency}
+      <div className="min-w-0 space-y-4">
+        {isCreateFormOpen ? (
+          <CardForm
+            cancelLabel="Cancelar"
+            form={createForm}
+            onCancel={cancelCreateForm}
+            onChange={setCreateForm}
+            onSubmit={handleCreateSubmit}
+            submitLabel="Guardar tarjeta"
+            title="Nueva tarjeta"
+          />
+        ) : (
+          <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <p className="text-sm font-medium text-teal-700">Gestión de tarjetas</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">Tarjetas de crédito</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Crea tarjetas nuevas desde aquí. Para editar una tarjeta existente, usa el botón dentro de su propia tarjeta.
+            </p>
+            <button
+              className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
+              onClick={openCreateForm}
+              type="button"
             >
-              {SUPPORTED_CURRENCIES.map((currency) => (
-                <option key={currency.code} value={currency.code}>{currency.label}</option>
-              ))}
-            </select>
-          </label>
-          <TextInput label="Color opcional" type="color" value={form.color} onChange={(value) => setForm({ ...form, color: value })} />
-          <label className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            <span className="flex items-center gap-2 font-medium">
-              <input
-                checked={form.is_active}
-                onChange={(event) => setForm({ ...form, is_active: event.target.checked })}
-                type="checkbox"
-              />
-              Tarjeta activa
-            </span>
-            <span className="mt-1 block text-xs text-slate-500">
-              Las tarjetas inactivas se conservan para historial, pero no aparecen al crear nuevos gastos o pagos.
-            </span>
-          </label>
-        </div>
-        <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
-          {editingId ? "Guardar cambios" : "Crear tarjeta"}
-        </button>
-        {editingId ? (
-          <button
-            className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700"
-            onClick={() => {
-              setEditingId(null);
-              setForm(emptyForm);
-            }}
-            type="button"
-          >
-            Cancelar edicion
-          </button>
-        ) : null}
+              Nueva tarjeta
+            </button>
+          </section>
+        )}
+
         {message ? <StatusMessage message={message} /> : null}
-      </form>
+      </div>
 
       <div className="space-y-4">
         <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
@@ -355,12 +412,20 @@ export function CardManager() {
                       Limite: <MoneyAmount amount={limit} currency={card.currency} />
                     </p>
                   </div>
-                  <div className="flex min-w-0 flex-wrap gap-2 sm:justify-end">
-                    <StatusPill
-                      label={card.is_active ? "Activa" : "Inactiva"}
-                      tone={card.is_active ? "success" : "neutral"}
+                  <div className="flex min-w-0 flex-col items-start gap-2 sm:items-end">
+                    <div className="flex min-w-0 flex-wrap gap-2 sm:justify-end">
+                      <StatusPill
+                        label={card.is_active ? "Activa" : "Inactiva"}
+                        tone={card.is_active ? "success" : "neutral"}
+                      />
+                      <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
+                    </div>
+                    <ActiveCardToggle
+                      disabled={editingCardId === card.id}
+                      isActive={card.is_active}
+                      isLoading={togglingCardId === card.id}
+                      onToggle={() => toggleCardActive(card)}
                     />
-                    <StatusPill label={usageStatus.label} tone={usageStatus.tone} />
                   </div>
                 </div>
 
@@ -449,10 +514,25 @@ export function CardManager() {
                 </div>
               </div>
 
+              {editingCardId === card.id ? (
+                <CardForm
+                  cancelLabel="Cancelar"
+                  form={editForm}
+                  onCancel={cancelEdit}
+                  onChange={setEditForm}
+                  onSubmit={(event) => handleEditSubmit(event, card.id)}
+                  submitLabel="Guardar cambios"
+                  title="Editar tarjeta"
+                  variant="inline"
+                />
+              ) : null}
+
               <div className="mt-4 flex gap-2">
-                <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => startEdit(card)} type="button">
-                  Editar
-                </button>
+                {editingCardId !== card.id ? (
+                  <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => startEdit(card)} type="button">
+                    Editar
+                  </button>
+                ) : null}
                 <button className="rounded-md border border-red-200 px-3 py-2 text-sm text-red-700" onClick={() => deleteCard(card.id)} type="button">
                   Borrar
                 </button>
@@ -504,7 +584,99 @@ function TextInput({ label, value, onChange, type = "text", min, max, maxLength,
   );
 }
 
-function validateCardForm(form: typeof emptyForm) {
+function CardForm({
+  cancelLabel,
+  form,
+  onCancel,
+  onChange,
+  onSubmit,
+  submitLabel,
+  title,
+  variant = "panel",
+}: {
+  cancelLabel: string;
+  form: CardFormState;
+  onCancel: () => void;
+  onChange: (form: CardFormState) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  submitLabel: string;
+  title: string;
+  variant?: "panel" | "inline";
+}) {
+  const className = variant === "inline"
+    ? "mt-4 min-w-0 rounded-md border border-teal-100 bg-white/80 p-4"
+    : "min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6";
+
+  return (
+    <form className={className} onSubmit={onSubmit}>
+      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+      <div className="mt-4 grid gap-4">
+        <TextInput label="Nombre" value={form.name} onChange={(value) => onChange({ ...form, name: value })} />
+        <TextInput label="Banco" value={form.bank} onChange={(value) => onChange({ ...form, bank: value })} />
+        <TextInput label="Ultimos 4 digitos" inputMode="numeric" maxLength={4} value={form.last_four_digits} onChange={(value) => onChange({ ...form, last_four_digits: value })} />
+        <TextInput label="Limite de credito" min="0.01" step="0.01" type="number" value={form.credit_limit} onChange={(value) => onChange({ ...form, credit_limit: value })} />
+        <TextInput label="Dia de corte" max="31" min="1" type="number" value={form.statement_cut_day} onChange={(value) => onChange({ ...form, statement_cut_day: value })} />
+        <TextInput label="Dia limite de pago" max="31" min="1" type="number" value={form.payment_due_day} onChange={(value) => onChange({ ...form, payment_due_day: value })} />
+        <label className="block">
+          <span className="text-sm font-medium text-slate-700">Moneda</span>
+          <select
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+            onChange={(event) => onChange({ ...form, currency: event.target.value })}
+            value={form.currency}
+          >
+            {SUPPORTED_CURRENCIES.map((currency) => (
+              <option key={currency.code} value={currency.code}>{currency.label}</option>
+            ))}
+          </select>
+        </label>
+        <TextInput label="Color opcional" type="color" value={form.color} onChange={(value) => onChange({ ...form, color: value })} />
+        <label className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+          <span className="flex items-center gap-2 font-medium">
+            <input
+              checked={form.is_active}
+              onChange={(event) => onChange({ ...form, is_active: event.target.checked })}
+              type="checkbox"
+            />
+            Tarjeta activa
+          </span>
+          <span className="mt-1 block text-xs text-slate-500">
+            Las tarjetas inactivas se conservan para historial, pero no aparecen al crear nuevos gastos o pagos.
+          </span>
+        </label>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <button className="w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700" type="submit">
+          {submitLabel}
+        </button>
+        <button
+          className="w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700"
+          onClick={onCancel}
+          type="button"
+        >
+          {cancelLabel}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function buildCardPayload(form: CardFormState, userId: string) {
+  return {
+    user_id: userId,
+    name: form.name.trim(),
+    bank: form.bank.trim(),
+    last_four_digits: form.last_four_digits.trim(),
+    credit_limit: Number(form.credit_limit),
+    statement_cut_day: Number(form.statement_cut_day),
+    payment_due_day: Number(form.payment_due_day),
+    currency: normalizeCurrency(form.currency),
+    color: form.color || null,
+    is_active: form.is_active,
+  };
+}
+
+function validateCardForm(form: CardFormState) {
   if (!form.name.trim()) return "Escribe el nombre de la tarjeta.";
   if (!form.bank.trim()) return "Escribe el banco de la tarjeta.";
   if (!/^\d{4}$/.test(form.last_four_digits.trim())) {
@@ -586,6 +758,35 @@ function PaymentDueRow({ label, value }: { label: string; value: ReactNode }) {
       <dt className="text-slate-500">{label}</dt>
       <dd className="min-w-0 font-medium text-slate-800 sm:text-right">{value}</dd>
     </div>
+  );
+}
+
+function ActiveCardToggle({
+  disabled,
+  isActive,
+  isLoading,
+  onToggle,
+}: {
+  disabled: boolean;
+  isActive: boolean;
+  isLoading: boolean;
+  onToggle: () => void;
+}) {
+  const label = isLoading ? "Guardando..." : disabled ? "Editando" : isActive ? "Desactivar" : "Activar";
+
+  return (
+    <button
+      aria-pressed={isActive}
+      className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-teal-300 disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled || isLoading}
+      onClick={onToggle}
+      type="button"
+    >
+      <span className={`relative inline-flex h-5 w-9 rounded-full transition ${isActive ? "bg-teal-600" : "bg-slate-300"}`}>
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${isActive ? "left-4" : "left-0.5"}`} />
+      </span>
+      {label}
+    </button>
   );
 }
 
