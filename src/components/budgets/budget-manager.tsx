@@ -5,9 +5,10 @@ import { MoneyAmount } from "@/components/ui/money-amount";
 import { dedupeCategories, findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
+import { getExpenseCurrency } from "@/lib/expense-sources";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserPreferences } from "@/lib/use-user-preferences";
-import type { Budget, Category, CreditCard, Expense } from "@/types/finance";
+import type { Account, Budget, Category, CreditCard, Expense } from "@/types/finance";
 
 const emptyForm = {
   name: "",
@@ -40,6 +41,7 @@ export function BudgetManager() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -75,18 +77,20 @@ export function BudgetManager() {
       { data: budgetData, error: budgetError },
       { data: categoryData, error: categoryError },
       { data: cardData, error: cardError },
+      { data: accountData, error: accountError },
       { data: expenseData, error: expenseError },
     ] = await Promise.all([
       supabase.from("budgets").select("*").eq("user_id", userData.user.id).order("month", { ascending: false }),
       supabase.from("categories").select("*").eq("user_id", userData.user.id).eq("type", "expense").order("name"),
       supabase.from("credit_cards").select("*").eq("user_id", userData.user.id),
+      supabase.from("accounts").select("*").eq("user_id", userData.user.id),
       supabase.from("expenses").select("*").eq("user_id", userData.user.id).order("expense_date", { ascending: false }),
     ]);
 
-    if (budgetError || categoryError || cardError || expenseError) {
+    if (budgetError || categoryError || cardError || accountError || expenseError) {
       setMessage({
         type: "error",
-        text: getFriendlyBudgetError(budgetError?.message ?? categoryError?.message ?? cardError?.message ?? expenseError?.message ?? "No se pudieron cargar los presupuestos."),
+        text: getFriendlyBudgetError(budgetError?.message ?? categoryError?.message ?? cardError?.message ?? accountError?.message ?? expenseError?.message ?? "No se pudieron cargar los presupuestos."),
       });
       setIsLoading(false);
       return;
@@ -96,6 +100,7 @@ export function BudgetManager() {
     setAllCategories((categoryData ?? []) as Category[]);
     setCategories(dedupeCategories((categoryData ?? []) as Category[]));
     setCards((cardData ?? []) as CreditCard[]);
+    setAccounts((accountData ?? []) as Account[]);
     setExpenses((expenseData ?? []) as Expense[]);
     setIsLoading(false);
   }
@@ -207,7 +212,7 @@ export function BudgetManager() {
     await loadData();
   }
 
-  const budgetSummaries = budgets.map((budget) => buildBudgetSummary(budget, allCategories, cards, expenses));
+  const budgetSummaries = budgets.map((budget) => buildBudgetSummary(budget, allCategories, cards, accounts, expenses));
   const activeBudgetSummaries = budgetSummaries.filter(({ budget }) => budget.is_active);
   const exceededBudgets = activeBudgetSummaries.filter((summary) => summary.status === "exceeded");
   const nearLimitBudgets = activeBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
@@ -362,7 +367,7 @@ function BudgetCard({ dateFormat, summary, onEdit, onDelete }: { dateFormat: str
   );
 }
 
-function buildBudgetSummary(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]): BudgetSummary {
+function buildBudgetSummary(budget: Budget, categories: Category[], cards: CreditCard[], accounts: Account[], expenses: Expense[]): BudgetSummary {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const currency = normalizeCurrency(budget.currency);
@@ -370,12 +375,11 @@ function buildBudgetSummary(budget: Budget, categories: Category[], cards: Credi
   const spent = expenses
     .filter((expense) => {
       const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
-      const card = cards.find((item) => item.id === expense.credit_card_id);
       return (
         (expense.category_id === budget.category_id ||
           isSameCategoryName(categories, expense.category_id, budget.category_id) ||
           Boolean(budgetCategoryName && normalizeCategoryName(findCategoryName(categories, expense.category_id)) === budgetCategoryName)) &&
-        normalizeCurrency(card?.currency) === currency &&
+        normalizeCurrency(getExpenseCurrency(expense, cards, accounts)) === currency &&
         expenseDate >= start &&
         expenseDate < end
       );

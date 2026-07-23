@@ -5,6 +5,7 @@ import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
+import { getExpenseCurrency, getExpenseSourceInfo, isExpenseInSelectedPeriod } from "@/lib/expense-sources";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import {
@@ -254,14 +255,7 @@ export function BasicReports() {
     setIsLoading(false);
   }
 
-  const filteredExpenses = expenses.filter((expense) =>
-    isDateInSelectedPeriod({
-      dateValue: expense.expense_date,
-      cardId: expense.credit_card_id,
-      cards,
-      filter: periodFilter,
-    })
-  );
+  const filteredExpenses = expenses.filter((expense) => isExpenseInSelectedPeriod({ expense, cards, filter: periodFilter }));
   const filteredPayments = payments.filter((payment) =>
     isDateInSelectedPeriod({
       dateValue: payment.payment_date,
@@ -271,15 +265,20 @@ export function BasicReports() {
     })
   );
 
-  const expensesByCategory = groupExpensesByCategory(filteredExpenses, categories, cards);
-  const expensesByCard = groupExpensesByCard(filteredExpenses, cards);
+  const expensesByCategory = groupExpensesByCategory(filteredExpenses, categories, cards, accounts);
+  const expensesBySource = groupExpensesBySource(filteredExpenses, cards, accounts);
   const paymentsByCard = groupPaymentsByCard(filteredPayments, cards);
   const comparisonByCard = buildComparisonByCard(cards, filteredExpenses, filteredPayments);
   const highestExpenses = [...filteredExpenses].sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 8);
   const recentPayments = filteredPayments.slice(0, 8);
-  const totalSpentByCurrency = groupMoneyByCurrency(filteredExpenses, (expense) => Number(expense.amount), (expense) => getCardCurrency(cards, expense.credit_card_id));
+  const totalSpentByCurrency = groupMoneyByCurrency(filteredExpenses, (expense) => Number(expense.amount), (expense) => getExpenseCurrency(expense, cards, accounts));
+  const totalCardSpentByCurrency = groupMoneyByCurrency(
+    filteredExpenses.filter((expense) => Boolean(expense.credit_card_id)),
+    (expense) => Number(expense.amount),
+    (expense) => getCardCurrency(cards, expense.credit_card_id)
+  );
   const totalPaidByCurrency = groupMoneyByCurrency(filteredPayments, (payment) => Number(payment.amount), (payment) => getCardCurrency(cards, payment.credit_card_id));
-  const pendingByCurrency = buildPendingTotals(totalSpentByCurrency, totalPaidByCurrency);
+  const pendingByCurrency = buildPendingTotals(totalCardSpentByCurrency, totalPaidByCurrency);
   const currentNetWorthRows = buildNetWorthRows({
     accounts,
     accountMovements,
@@ -293,7 +292,7 @@ export function BasicReports() {
   const snapshotHistoryRows = buildSnapshotHistoryRows(snapshots);
   const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, automaticExchangeRates, baseCurrency, snapshots);
   const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
-  const topCard = expensesByCard[0] ? `${expensesByCard[0].label} (${expensesByCard[0].currency})` : "Sin datos";
+  const topSource = expensesBySource[0] ? `${expensesBySource[0].label} (${expensesBySource[0].currency})` : "Sin datos";
   const dayCount = getPeriodDayCount(periodFilter, cards);
   const dailyAverageByCurrency = totalSpentByCurrency.map((total) => ({
     currency: total.currency,
@@ -445,7 +444,7 @@ export function BasicReports() {
           <SummaryCard label="Total pagado" value={<MoneyTotals totals={totalPaidByCurrency} />} />
           <SummaryCard label="Pendiente estimado" value={<MoneyTotals totals={pendingByCurrency} />} strong />
           <SummaryCard label="Categoria principal" value={topCategory} />
-          <SummaryCard label="Tarjeta principal" value={topCard} />
+          <SummaryCard label="Origen principal" value={topSource} />
         </div>
       </section>
 
@@ -523,7 +522,7 @@ export function BasicReports() {
         />
         <div className="grid min-w-0 gap-4 lg:grid-cols-2">
           <BarReport title="Gasto por categoria" rows={expensesByCategory} emptyText="No hay gastos por categoria en este periodo." />
-          <BarReport title="Gasto por tarjeta" rows={expensesByCard} emptyText="No hay gastos por tarjeta en este periodo." />
+          <BarReport title="Gasto por origen" rows={expensesBySource} emptyText="No hay gastos por origen en este periodo." />
         </div>
 
         <div className="grid min-w-0 gap-4 lg:grid-cols-2">
@@ -539,7 +538,7 @@ export function BasicReports() {
             </div>
             <p className="mt-2 text-sm text-slate-500">Calculado sobre el periodo seleccionado.</p>
           </div>
-          <HighestExpensesTable dateFormat={dateFormat} expenses={highestExpenses} cards={cards} categories={categories} />
+          <HighestExpensesTable accounts={accounts} dateFormat={dateFormat} expenses={highestExpenses} cards={cards} categories={categories} />
         </div>
 
         <RecentPaymentsTable dateFormat={dateFormat} payments={recentPayments} cards={cards} />
@@ -927,12 +926,12 @@ function getLatestAutomaticRatesForBase(rates: AutomaticExchangeRate[], baseCurr
   return Array.from(latestByQuoteCurrency.values()).sort((a, b) => normalizeCurrency(a.quote_currency).localeCompare(normalizeCurrency(b.quote_currency)));
 }
 
-function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[]): ReportRow[] {
+function groupExpensesByCategory(expenses: Expense[], categories: Category[], cards: CreditCard[], accounts: Account[]): ReportRow[] {
   const totals = new Map<string, ReportRow>();
 
   expenses.forEach((expense) => {
     const label = getCategoryName(categories, expense.category_id);
-    const currency = getCardCurrency(cards, expense.credit_card_id);
+    const currency = getExpenseCurrency(expense, cards, accounts);
     const id = `${label}-${currency}`;
     const current = totals.get(id)?.value ?? 0;
     totals.set(id, { id, label, currency, value: current + Number(expense.amount) });
@@ -941,13 +940,13 @@ function groupExpensesByCategory(expenses: Expense[], categories: Category[], ca
   return sortRows(totals);
 }
 
-function groupExpensesByCard(expenses: Expense[], cards: CreditCard[]): ReportRow[] {
+function groupExpensesBySource(expenses: Expense[], cards: CreditCard[], accounts: Account[]): ReportRow[] {
   const totals = new Map<string, ReportRow>();
 
   expenses.forEach((expense) => {
-    const card = cards.find((item) => item.id === expense.credit_card_id);
-    const label = card?.name ?? "Tarjeta no encontrada";
-    const currency = card?.currency ?? DEFAULT_CURRENCY;
+    const source = getExpenseSourceInfo(expense, cards, accounts);
+    const label = `${source.label} (${source.badgeLabel})`;
+    const currency = source.currency;
     const id = `${label}-${currency}`;
     const current = totals.get(id)?.value ?? 0;
     totals.set(id, { id, label, currency, value: current + Number(expense.amount) });
@@ -1605,11 +1604,13 @@ function ComparisonBar({ label, value, max, currency, colorClass }: { label: str
 }
 
 function HighestExpensesTable({
+  accounts,
   dateFormat,
   expenses,
   cards,
   categories,
 }: {
+  accounts: Account[];
   dateFormat: string;
   expenses: Expense[];
   cards: CreditCard[];
@@ -1623,22 +1624,31 @@ function HighestExpensesTable({
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="py-2 pr-4 font-medium">Fecha</th>
-              <th className="py-2 pr-4 font-medium">Tarjeta</th>
+              <th className="py-2 pr-4 font-medium">Origen</th>
               <th className="py-2 pr-4 font-medium">Categoria</th>
               <th className="py-2 pr-4 font-medium">Descripcion</th>
               <th className="py-2 text-right font-medium">Monto</th>
             </tr>
           </thead>
           <tbody>
-            {expenses.map((expense) => (
-              <tr className="border-b border-slate-100" key={expense.id}>
-                <td className="py-3 pr-4 text-slate-700">{formatDate(expense.expense_date, dateFormat)}</td>
-                <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
-                <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
-                <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(expense.amount)} currency={getCardCurrency(cards, expense.credit_card_id)} /></td>
-              </tr>
-            ))}
+            {expenses.map((expense) => {
+              const source = getExpenseSourceInfo(expense, cards, accounts);
+
+              return (
+                <tr className="border-b border-slate-100" key={expense.id}>
+                  <td className="py-3 pr-4 text-slate-700">{formatDate(expense.expense_date, dateFormat)}</td>
+                  <td className="py-3 pr-4 text-slate-700">
+                    <span>{source.label}</span>
+                    <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {source.badgeLabel}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(expense.amount)} currency={source.currency} /></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

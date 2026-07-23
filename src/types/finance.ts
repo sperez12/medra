@@ -18,7 +18,8 @@ export type CreditCard = {
 export type Expense = {
   id: string;
   user_id: string;
-  credit_card_id: string;
+  credit_card_id: string | null;
+  account_id: string | null;
   category_id: string | null;
   expense_date: string;
   amount: number;
@@ -73,6 +74,7 @@ export type AccountMovement = {
   user_id: string;
   account_id: string;
   payment_id: string | null;
+  expense_id: string | null;
   transfer_id: string | null;
   goal_contribution_id: string | null;
   movement_date: string;

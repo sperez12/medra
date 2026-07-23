@@ -1,6 +1,7 @@
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { calculateCardPaymentDueBalance } from "@/lib/card-payment-due";
 import { formatCurrency, normalizeCurrency } from "@/lib/currencies";
+import { getExpenseCurrency } from "@/lib/expense-sources";
 import { getDayDifference, startOfDay } from "@/lib/periods";
 import type {
   Account,
@@ -158,7 +159,7 @@ export function buildFinancialAlerts({
 
   budgets
     .filter((budget) => budget.is_active && budget.month.slice(0, 7) === getMonthKey(currentDay))
-    .map((budget) => buildBudgetAlert(budget, categories, cards, expenses, safePreferences))
+    .map((budget) => buildBudgetAlert(budget, categories, cards, accounts, expenses, safePreferences))
     .filter((alert): alert is CalculatedFinancialAlert => Boolean(alert))
     .forEach((alert) => alerts.push(alert));
 
@@ -216,13 +217,14 @@ function buildBudgetAlert(
   budget: Budget,
   categories: Category[],
   cards: CreditCard[],
+  accounts: Account[],
   expenses: Expense[],
   preferences: AlertPreferenceValues
 ): CalculatedFinancialAlert | null {
   const limit = Number(budget.amount);
   if (limit <= 0) return null;
 
-  const spent = calculateBudgetSpent(budget, categories, cards, expenses);
+  const spent = calculateBudgetSpent(budget, categories, cards, accounts, expenses);
   const percent = (spent / limit) * 100;
 
   if (percent < preferences.budget_warning_percent) {
@@ -313,7 +315,7 @@ function buildInvestmentPriceAlert(
   } satisfies CalculatedFinancialAlert;
 }
 
-function calculateBudgetSpent(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]) {
+function calculateBudgetSpent(budget: Budget, categories: Category[], cards: CreditCard[], accounts: Account[], expenses: Expense[]) {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const currency = normalizeCurrency(budget.currency);
@@ -321,14 +323,13 @@ function calculateBudgetSpent(budget: Budget, categories: Category[], cards: Cre
 
   return expenses
     .filter((expense) => {
-      const card = cards.find((item) => item.id === expense.credit_card_id);
       const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
 
       return (
         (expense.category_id === budget.category_id ||
           isSameCategoryName(categories, expense.category_id, budget.category_id) ||
           Boolean(budgetCategoryName && normalizeCategoryName(findCategoryName(categories, expense.category_id)) === budgetCategoryName)) &&
-        normalizeCurrency(card?.currency) === currency &&
+        normalizeCurrency(getExpenseCurrency(expense, cards, accounts)) === currency &&
         expenseDate >= start &&
         expenseDate < end
       );

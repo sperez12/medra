@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
+import { getExpenseSourceInfo } from "@/lib/expense-sources";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserPreferences } from "@/lib/use-user-preferences";
-import type { CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
+import type { Account, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const paymentTypeLabels: Record<PaymentType, string> = {
   minimum: "Pago minimo",
@@ -38,6 +39,7 @@ export function FinancialCalendar() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { dateFormat } = useUserPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [message, setMessage] = useState<Message | null>(null);
@@ -64,6 +66,7 @@ export function FinancialCalendar() {
     setIsLoading(true);
     const [
       { data: cardData, error: cardError },
+      { data: accountData, error: accountError },
       { data: paymentData, error: paymentError },
       { data: expenseData, error: expenseError },
     ] = await Promise.all([
@@ -72,6 +75,11 @@ export function FinancialCalendar() {
         .select("*")
         .eq("user_id", userData.user.id)
         .eq("is_active", true)
+        .order("name"),
+      supabase
+        .from("accounts")
+        .select("*")
+        .eq("user_id", userData.user.id)
         .order("name"),
       supabase
         .from("payments")
@@ -86,11 +94,12 @@ export function FinancialCalendar() {
         .limit(50),
     ]);
 
-    if (cardError || paymentError || expenseError) {
+    if (cardError || accountError || paymentError || expenseError) {
       setMessage({
         type: "error",
         text:
           cardError?.message ??
+          accountError?.message ??
           paymentError?.message ??
           expenseError?.message ??
           "No se pudo cargar el calendario.",
@@ -100,12 +109,13 @@ export function FinancialCalendar() {
     }
 
     setCards((cardData ?? []) as CreditCard[]);
+    setAccounts((accountData ?? []) as Account[]);
     setPayments((paymentData ?? []) as Payment[]);
     setExpenses((expenseData ?? []) as Expense[]);
     setIsLoading(false);
   }
 
-  const events = buildCalendarEvents(cards, payments, expenses);
+  const events = buildCalendarEvents(cards, accounts, payments, expenses);
   const overdueCount = events.filter((event) => getEventStatus(event.date) === "overdue").length;
   const thisWeekCount = events.filter((event) => getEventStatus(event.date) === "this_week").length;
   const upcomingCount = events.filter((event) => getEventStatus(event.date) === "upcoming").length;
@@ -152,7 +162,7 @@ export function FinancialCalendar() {
   );
 }
 
-function buildCalendarEvents(cards: CreditCard[], payments: Payment[], expenses: Expense[]) {
+function buildCalendarEvents(cards: CreditCard[], accounts: Account[], payments: Payment[], expenses: Expense[]) {
   const today = startOfDay(new Date());
   const horizon = new Date(today);
   horizon.setDate(today.getDate() + 45);
@@ -199,16 +209,16 @@ function buildCalendarEvents(cards: CreditCard[], payments: Payment[], expenses:
     .filter((expense) => Number(expense.amount) >= 1000)
     .slice(0, 8)
     .map((expense) => {
-      const card = cards.find((item) => item.id === expense.credit_card_id);
+      const source = getExpenseSourceInfo(expense, cards, accounts);
       return {
         id: `expense-${expense.id}`,
         date: new Date(`${expense.expense_date}T00:00:00`),
         type: "important_expense" as const,
-        cardName: card?.name ?? "Tarjeta no encontrada",
-        cardDetail: card ? `${card.bank} - **** ${card.last_four_digits}` : "Sin tarjeta",
+        cardName: source.label,
+        cardDetail: `${source.badgeLabel} - ${source.detail}`,
         description: expense.description || "Gasto importante",
         amount: Number(expense.amount),
-        currency: card?.currency ?? DEFAULT_CURRENCY,
+        currency: source.currency,
       };
     });
 

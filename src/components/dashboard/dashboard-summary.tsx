@@ -8,6 +8,7 @@ import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { findCategoryName, isSameCategoryName, normalizeCategoryName } from "@/lib/categories";
 import { DEFAULT_CURRENCY, groupMoneyByCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference } from "@/lib/date-format";
+import { getExpenseCurrency, getExpenseSourceInfo, isExpenseInSelectedPeriod } from "@/lib/expense-sources";
 import { buildFinancialAlerts, formatDayCount, type CalculatedFinancialAlert } from "@/lib/financial-alerts";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserAlertPreferences } from "@/lib/use-user-alert-preferences";
@@ -262,7 +263,7 @@ export function DashboardSummary() {
   const currentMonthValue = new Date().toISOString().slice(0, 7);
   const currentBudgetSummaries = budgets
     .filter((budget) => budget.month.slice(0, 7) === currentMonthValue)
-    .map((budget) => buildBudgetDashboardSummary(budget, categories, cards, expenses));
+    .map((budget) => buildBudgetDashboardSummary(budget, categories, cards, accounts, expenses));
   const exceededBudgets = currentBudgetSummaries.filter((summary) => summary.status === "exceeded");
   const nearLimitBudgets = currentBudgetSummaries.filter((summary) => summary.status === "warning" || summary.status === "danger");
   const budgetedByCurrency = groupMoneyByCurrency(currentBudgetSummaries, (summary) => Number(summary.budget.amount), (summary) => summary.budget.currency);
@@ -312,14 +313,7 @@ export function DashboardSummary() {
   const mainCardSummaries = [...cardSummaries]
     .sort((a, b) => b.pending - a.pending || b.usagePercent - a.usagePercent)
     .slice(0, 6);
-  const filteredExpenses = expenses.filter((expense) =>
-    isDateInSelectedPeriod({
-      dateValue: expense.expense_date,
-      cardId: expense.credit_card_id,
-      cards,
-      filter: periodFilter,
-    })
-  );
+  const filteredExpenses = expenses.filter((expense) => isExpenseInSelectedPeriod({ expense, cards, filter: periodFilter }));
   const filteredPayments = payments.filter((payment) =>
     isDateInSelectedPeriod({
       dateValue: payment.payment_date,
@@ -518,6 +512,7 @@ export function DashboardSummary() {
 
         <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-2">
           <RecentExpensesTable
+            accounts={accounts}
             categories={categories}
             cards={cards}
             dateFormat={dateFormat}
@@ -654,20 +649,19 @@ function buildNetWorthByCurrency(
   });
 }
 
-function buildBudgetDashboardSummary(budget: Budget, categories: Category[], cards: CreditCard[], expenses: Expense[]) {
+function buildBudgetDashboardSummary(budget: Budget, categories: Category[], cards: CreditCard[], accounts: Account[], expenses: Expense[]) {
   const start = new Date(`${budget.month.slice(0, 7)}-01T00:00:00`);
   const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const currency = normalizeCurrency(budget.currency);
   const budgetCategoryName = normalizeCategoryName(findCategoryName(categories, budget.category_id));
   const spent = expenses
     .filter((expense) => {
-      const card = cards.find((item) => item.id === expense.credit_card_id);
       const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
       return (
         (expense.category_id === budget.category_id ||
           isSameCategoryName(categories, expense.category_id, budget.category_id) ||
           Boolean(budgetCategoryName && normalizeCategoryName(findCategoryName(categories, expense.category_id)) === budgetCategoryName)) &&
-        normalizeCurrency(card?.currency) === currency &&
+        normalizeCurrency(getExpenseCurrency(expense, cards, accounts)) === currency &&
         expenseDate >= start &&
         expenseDate < end
       );
@@ -1230,11 +1224,13 @@ function UpcomingCards({
 }
 
 function RecentExpensesTable({
+  accounts,
   cards,
   categories,
   dateFormat,
   expenses,
 }: {
+  accounts: Account[];
   cards: CreditCard[];
   categories: Category[];
   dateFormat: string;
@@ -1248,26 +1244,35 @@ function RecentExpensesTable({
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="py-2 pr-4 font-medium">Fecha</th>
-              <th className="py-2 pr-4 font-medium">Tarjeta</th>
+              <th className="py-2 pr-4 font-medium">Origen</th>
               <th className="py-2 pr-4 font-medium">Categoria</th>
               <th className="py-2 pr-4 font-medium">Descripcion</th>
               <th className="py-2 text-right font-medium">Monto</th>
             </tr>
           </thead>
           <tbody>
-            {expenses.map((expense) => (
-              <tr className="border-b border-slate-100" key={expense.id}>
-                <td className="py-3 pr-4 text-slate-700">
-                  {formatDate(expense.expense_date, dateFormat)}
-                </td>
-                <td className="py-3 pr-4 text-slate-700">{getCardName(cards, expense.credit_card_id)}</td>
-                <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
-                <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
-                <td className="py-3 text-right font-semibold text-slate-950">
-                  <MoneyAmount amount={Number(expense.amount)} currency={getCardCurrency(cards, expense.credit_card_id)} />
-                </td>
-              </tr>
-            ))}
+            {expenses.map((expense) => {
+              const source = getExpenseSourceInfo(expense, cards, accounts);
+
+              return (
+                <tr className="border-b border-slate-100" key={expense.id}>
+                  <td className="py-3 pr-4 text-slate-700">
+                    {formatDate(expense.expense_date, dateFormat)}
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">
+                    <span>{source.label}</span>
+                    <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      {source.badgeLabel}
+                    </span>
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">{getCategoryName(categories, expense.category_id)}</td>
+                  <td className="py-3 pr-4 text-slate-700">{expense.description || "Sin descripcion"}</td>
+                  <td className="py-3 text-right font-semibold text-slate-950">
+                    <MoneyAmount amount={Number(expense.amount)} currency={source.currency} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
