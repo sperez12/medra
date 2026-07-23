@@ -14,6 +14,7 @@ import {
   getRangeForCard,
   type PeriodFilterState,
 } from "@/lib/period-filters";
+import { useUserAlertPreferences } from "@/lib/use-user-alert-preferences";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import type { CreditCard, Expense, Payment } from "@/types/finance";
 
@@ -47,6 +48,7 @@ type CardSummary = {
   available: number;
   usedPercent: number;
   dueBalance: ReturnType<typeof calculateCardPaymentDueBalance>;
+  hasPriorityPaymentDue: boolean;
   daysToCut: number;
   daysToPayment: number;
   usageStatus: ReturnType<typeof getUsageStatus>;
@@ -57,6 +59,7 @@ type CardSummary = {
 export function CardManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
+  const { alertPreferences } = useUserAlertPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -360,6 +363,11 @@ export function CardManager() {
       const dueBalance = calculateCardPaymentDueBalance({ card, expenses, payments });
       const daysToCut = getDaysUntilDay(card.statement_cut_day);
       const daysToPayment = dueBalance.context.daysUntilDue;
+      const hasPriorityPaymentDue =
+        card.is_active &&
+        dueBalance.pending > 0 &&
+        daysToPayment >= 0 &&
+        daysToPayment <= alertPreferences.card_payment_warning_days;
       const usageStatus = getUsageStatus(usedPercent);
       const cutStatus = getDateStatus(daysToCut);
       const paymentStatus = getDateStatus(daysToPayment);
@@ -375,6 +383,7 @@ export function CardManager() {
         available,
         usedPercent,
         dueBalance,
+        hasPriorityPaymentDue,
         daysToCut,
         daysToPayment,
         usageStatus,
@@ -422,7 +431,7 @@ export function CardManager() {
         <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
         <div className="space-y-1 text-sm text-slate-600">
           <p>Vista actual: {getPeriodLabel(periodFilter)}.</p>
-          <p>Ordenadas automáticamente: activas primero, mayor saldo del periodo y mayor uso.</p>
+          <p>Ordenadas automáticamente: pagos próximos, mayor saldo y activas primero.</p>
         </div>
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-2">
@@ -758,8 +767,15 @@ function sortCardSummaries(a: CardSummary, b: CardSummary) {
     return compareCardNames(a.card, b.card);
   }
 
+  if (a.hasPriorityPaymentDue !== b.hasPriorityPaymentDue) {
+    return a.hasPriorityPaymentDue ? -1 : 1;
+  }
+
   const pendingDifference = b.pending - a.pending;
   if (Math.abs(pendingDifference) > 0.001) return pendingDifference;
+
+  const paymentDueDifference = a.daysToPayment - b.daysToPayment;
+  if (paymentDueDifference !== 0) return paymentDueDifference;
 
   const usageDifference = b.usedPercent - a.usedPercent;
   if (Math.abs(usageDifference) > 0.001) return usageDifference;
