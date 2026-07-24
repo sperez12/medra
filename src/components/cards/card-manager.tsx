@@ -16,7 +16,7 @@ import {
 } from "@/lib/period-filters";
 import { useUserAlertPreferences } from "@/lib/use-user-alert-preferences";
 import { useUserPreferences } from "@/lib/use-user-preferences";
-import type { CreditCard, Expense, Payment } from "@/types/finance";
+import type { Account, Category, CreditCard, Expense, Payment, PaymentType } from "@/types/finance";
 
 const emptyForm = {
   name: "",
@@ -28,6 +28,14 @@ const emptyForm = {
   currency: DEFAULT_CURRENCY,
   color: "#0d9488",
   is_active: true,
+};
+
+const paymentTypeLabels: Record<PaymentType, string> = {
+  minimum: "Pago minimo",
+  partial: "Pago parcial",
+  no_interest: "Pago para no generar intereses",
+  total: "Pago total",
+  other: "Otro",
 };
 
 type CardFormState = typeof emptyForm;
@@ -54,6 +62,8 @@ type CardSummary = {
   usageStatus: ReturnType<typeof getUsageStatus>;
   cutStatus: ReturnType<typeof getDateStatus>;
   paymentStatus: ReturnType<typeof getDateStatus>;
+  periodExpenses: Expense[];
+  periodPayments: Payment[];
 };
 
 export function CardManager() {
@@ -61,12 +71,15 @@ export function CardManager() {
   const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
   const { alertPreferences } = useUserAlertPreferences();
   const [cards, setCards] = useState<CreditCard[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [createForm, setCreateForm] = useState<CardFormState>(emptyForm);
   const [editForm, setEditForm] = useState<CardFormState>(emptyForm);
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [togglingCardId, setTogglingCardId] = useState<string | null>(null);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
   const [message, setMessage] = useState<Message | null>(null);
@@ -99,6 +112,8 @@ export function CardManager() {
     setIsLoading(true);
     const [
       { data: cardData, error: cardError },
+      { data: accountData, error: accountError },
+      { data: categoryData, error: categoryError },
       { data: expenseData, error: expenseError },
       { data: paymentData, error: paymentError },
     ] =
@@ -108,15 +123,28 @@ export function CardManager() {
           .select("*")
           .eq("user_id", userData.user.id)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("accounts")
+          .select("*")
+          .eq("user_id", userData.user.id)
+          .order("name"),
+        supabase
+          .from("categories")
+          .select("*")
+          .eq("user_id", userData.user.id)
+          .eq("type", "expense")
+          .order("name"),
         supabase.from("expenses").select("*").eq("user_id", userData.user.id),
         supabase.from("payments").select("*").eq("user_id", userData.user.id),
       ]);
 
-    if (cardError || expenseError || paymentError) {
+    if (cardError || accountError || categoryError || expenseError || paymentError) {
       setMessage({
         type: "error",
         text:
           cardError?.message ??
+          accountError?.message ??
+          categoryError?.message ??
           expenseError?.message ??
           paymentError?.message ??
           "No se pudieron cargar tus tarjetas.",
@@ -126,6 +154,8 @@ export function CardManager() {
     }
 
     setCards((cardData ?? []) as CreditCard[]);
+    setAccounts((accountData ?? []) as Account[]);
+    setCategories((categoryData ?? []) as Category[]);
     setExpenses((expenseData ?? []) as Expense[]);
     setPayments((paymentData ?? []) as Payment[]);
     setIsLoading(false);
@@ -315,44 +345,30 @@ export function CardManager() {
       setEditingCardId(null);
       setEditForm(emptyForm);
     }
+    if (!error && expandedCardId === id) {
+      setExpandedCardId(null);
+    }
     await loadData();
   }
 
-  function getSelectedPeriodTotal(card: CreditCard) {
-    const period = getRangeForCard(periodFilter, card);
-
-    return expenses
-      .filter((expense) => {
-        const expenseDate = new Date(`${expense.expense_date}T00:00:00`);
-        return (
-          expense.credit_card_id === card.id &&
-          expenseDate >= period.start &&
-          expenseDate <= period.end
-        );
-      })
-      .reduce((total, expense) => total + Number(expense.amount), 0);
+  function getCategoryName(categoryId: string | null) {
+    return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
   }
 
-  function getSelectedPeriodPayments(card: CreditCard) {
-    const period = getRangeForCard(periodFilter, card);
-
-    return payments
-      .filter((payment) => {
-        const paymentDate = new Date(`${payment.payment_date}T00:00:00`);
-        return (
-          payment.credit_card_id === card.id &&
-          paymentDate >= period.start &&
-          paymentDate <= period.end
-        );
-      })
-      .reduce((total, payment) => total + Number(payment.amount), 0);
+  function getAccountName(accountId: string | null) {
+    if (!accountId) return "Sin cuenta origen";
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) return "Cuenta no encontrada";
+    return account.institution ? `${account.name} - ${account.institution}` : account.name;
   }
 
   const cardSummaries: CardSummary[] = cards
     .map((card) => {
       const period = getRangeForCard(periodFilter, card);
-      const total = getSelectedPeriodTotal(card);
-      const paid = getSelectedPeriodPayments(card);
+      const periodExpenses = getExpensesForCardPeriod(expenses, card.id, period.start, period.end);
+      const periodPayments = getPaymentsForCardPeriod(payments, card.id, period.start, period.end);
+      const total = sumExpenseAmounts(periodExpenses);
+      const paid = sumPaymentAmounts(periodPayments);
       const pending = Math.max(total - paid, 0);
       const pendingPeriodLabel = periodFilter.mode === "card_current"
         ? "Saldo pendiente del periodo actual"
@@ -389,6 +405,8 @@ export function CardManager() {
         usageStatus,
         cutStatus,
         paymentStatus,
+        periodExpenses,
+        periodPayments,
       };
     })
     .sort(sortCardSummaries);
@@ -448,9 +466,12 @@ export function CardManager() {
           daysToCut,
           daysToPayment,
           dueBalance,
+          hasPriorityPaymentDue,
           limit,
           paid,
           paymentStatus,
+          periodExpenses,
+          periodPayments,
           pending,
           pendingPeriodLabel,
           period,
@@ -583,6 +604,34 @@ export function CardManager() {
                 </div>
               </div>
 
+              {expandedCardId === card.id ? (
+                <CardDetailPanel
+                  dateFormat={dateFormat}
+                  getAccountName={getAccountName}
+                  getCategoryName={getCategoryName}
+                  summary={{
+                    available,
+                    card,
+                    cutStatus,
+                    daysToCut,
+                    daysToPayment,
+                    dueBalance,
+                    hasPriorityPaymentDue,
+                    limit,
+                    paid,
+                    paymentStatus,
+                    pending,
+                    pendingPeriodLabel,
+                    period,
+                    periodExpenses,
+                    periodPayments,
+                    total,
+                    usageStatus,
+                    usedPercent,
+                  }}
+                />
+              ) : null}
+
               {editingCardId === card.id ? (
                 <CardForm
                   cancelLabel="Cancelar"
@@ -596,7 +645,14 @@ export function CardManager() {
                 />
               ) : null}
 
-              <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  className="rounded-md border border-teal-200 px-3 py-2 text-sm font-medium text-teal-700 hover:border-teal-500"
+                  onClick={() => setExpandedCardId(expandedCardId === card.id ? null : card.id)}
+                  type="button"
+                >
+                  {expandedCardId === card.id ? "Ocultar detalle" : "Ver detalle"}
+                </button>
                 {editingCardId !== card.id ? (
                   <button className="rounded-md border border-slate-300 px-3 py-2 text-sm" onClick={() => startEdit(card)} type="button">
                     Editar
@@ -616,6 +672,139 @@ export function CardManager() {
           </div>
         ) : null}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CardDetailPanel({
+  dateFormat,
+  getAccountName,
+  getCategoryName,
+  summary,
+}: {
+  dateFormat: string;
+  getAccountName: (accountId: string | null) => string;
+  getCategoryName: (categoryId: string | null) => string;
+  summary: CardSummary;
+}) {
+  const {
+    card,
+    dueBalance,
+    paid,
+    pending,
+    period,
+    periodExpenses,
+    periodPayments,
+    total,
+    usedPercent,
+  } = summary;
+
+  return (
+    <div className="mt-4 min-w-0 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+      <div className="flex min-w-0 flex-col gap-1">
+        <h4 className="text-base font-semibold text-slate-950">Detalle de movimientos</h4>
+        <p className="text-sm text-slate-600">
+          Solo incluye gastos y pagos asociados directamente a esta tarjeta.
+        </p>
+      </div>
+
+      <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Metric label="Total gastado" value={<MoneyAmount amount={total} currency={card.currency} />} />
+        <Metric label="Total pagado" value={<MoneyAmount amount={paid} currency={card.currency} />} />
+        <Metric label="Saldo del periodo" value={<MoneyAmount amount={pending} currency={card.currency} />} strong />
+        <Metric label="Uso del limite" value={`${usedPercent.toFixed(1)}%`} />
+      </div>
+
+      <div className="mt-4 grid min-w-0 gap-3 lg:grid-cols-2">
+        <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+          <p className="font-medium text-slate-800">Periodo mostrado</p>
+          <p className="mt-1 text-slate-600">
+            {formatDateForPreference(period.start, dateFormat)} a {formatDateForPreference(period.end, dateFormat)}
+          </p>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+          <p className="font-medium text-slate-800">Proximo pago</p>
+          <p className="mt-1 text-slate-600">
+            Fecha limite: {formatDateForPreference(dueBalance.context.dueDate, dateFormat)}
+          </p>
+          <p className="mt-1 text-slate-600">
+            Periodo a pagar: {formatDateForPreference(dueBalance.context.payablePeriod.start, dateFormat)} a{" "}
+            {formatDateForPreference(dueBalance.context.payablePeriod.end, dateFormat)}
+          </p>
+          <p className="mt-1 font-medium text-slate-900">
+            Saldo a pagar estimado: <MoneyAmount amount={dueBalance.pending} currency={card.currency} />
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-2">
+        <section className="min-w-0 rounded-md border border-slate-200 bg-white p-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h5 className="text-sm font-semibold text-slate-900">Gastos de esta tarjeta</h5>
+            <p className="text-xs text-slate-500">Periodo mostrado, sin gastos de cuenta/efectivo.</p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {periodExpenses.length > 0 ? (
+              periodExpenses.map((expense) => (
+                <div className="min-w-0 rounded-md bg-slate-50 p-3 text-sm" key={expense.id}>
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-slate-800">
+                        {expense.description || "Sin descripcion"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDateForPreference(expense.expense_date, dateFormat)} - {getCategoryName(expense.category_id)}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-slate-950 sm:text-right">
+                      <MoneyAmount amount={Number(expense.amount)} currency={card.currency} />
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                No hay gastos de esta tarjeta en el periodo mostrado.
+              </p>
+            )}
+          </div>
+        </section>
+
+        <section className="min-w-0 rounded-md border border-slate-200 bg-white p-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h5 className="text-sm font-semibold text-slate-900">Pagos de esta tarjeta</h5>
+            <p className="text-xs text-slate-500">Pagos registrados dentro del periodo mostrado.</p>
+          </div>
+          <div className="mt-3 space-y-2">
+            {periodPayments.length > 0 ? (
+              periodPayments.map((payment) => (
+                <div className="min-w-0 rounded-md bg-slate-50 p-3 text-sm" key={payment.id}>
+                  <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words font-medium text-slate-800">
+                        {payment.notes || paymentTypeLabels[payment.payment_type]}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatDateForPreference(payment.payment_date, dateFormat)} - {paymentTypeLabels[payment.payment_type]}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Cuenta origen: {getAccountName(payment.account_id)}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-slate-950 sm:text-right">
+                      <MoneyAmount amount={Number(payment.amount)} currency={card.currency} />
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                No hay pagos registrados para esta tarjeta en el periodo mostrado.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -756,6 +945,36 @@ function validateCardForm(form: CardFormState) {
   if (!isDayBetween1And31(form.payment_due_day)) return "El dia limite de pago debe estar entre 1 y 31.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   return "";
+}
+
+function getExpensesForCardPeriod(expenses: Expense[], cardId: string, start: Date, end: Date) {
+  return expenses
+    .filter((expense) => {
+      const expenseDate = parseLocalDate(expense.expense_date);
+      return expense.credit_card_id === cardId && expenseDate >= start && expenseDate <= end;
+    })
+    .sort((a, b) => parseLocalDate(b.expense_date).getTime() - parseLocalDate(a.expense_date).getTime());
+}
+
+function getPaymentsForCardPeriod(payments: Payment[], cardId: string, start: Date, end: Date) {
+  return payments
+    .filter((payment) => {
+      const paymentDate = parseLocalDate(payment.payment_date);
+      return payment.credit_card_id === cardId && paymentDate >= start && paymentDate <= end;
+    })
+    .sort((a, b) => parseLocalDate(b.payment_date).getTime() - parseLocalDate(a.payment_date).getTime());
+}
+
+function sumExpenseAmounts(expenses: Expense[]) {
+  return expenses.reduce((total, expense) => total + Number(expense.amount), 0);
+}
+
+function sumPaymentAmounts(payments: Payment[]) {
+  return payments.reduce((total, payment) => total + Number(payment.amount), 0);
+}
+
+function parseLocalDate(dateValue: string) {
+  return new Date(`${dateValue}T00:00:00`);
 }
 
 function sortCardSummaries(a: CardSummary, b: CardSummary) {

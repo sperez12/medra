@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { PeriodFilterControls } from "@/components/period-filter-controls";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { formatDateForPreference } from "@/lib/date-format";
@@ -34,6 +34,8 @@ type Message = {
   text: string;
 };
 
+type ExpenseSourceFilter = "all" | "card" | "account";
+
 export function ExpenseManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { dateFormat } = useUserPreferences();
@@ -44,6 +46,9 @@ export function ExpenseManager() {
   const [form, setForm] = useState(emptyForm);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilterState>(getDefaultPeriodFilter);
+  const [sourceFilter, setSourceFilter] = useState<ExpenseSourceFilter>("all");
+  const [cardFilterId, setCardFilterId] = useState("");
+  const [accountFilterId, setAccountFilterId] = useState("");
   const [message, setMessage] = useState<Message | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -77,13 +82,11 @@ export function ExpenseManager() {
         .from("credit_cards")
         .select("*")
         .eq("user_id", userData.user.id)
-        .eq("is_active", true)
         .order("name"),
       supabase
         .from("accounts")
         .select("*")
         .eq("user_id", userData.user.id)
-        .eq("is_active", true)
         .order("name"),
       supabase
         .from("expenses")
@@ -215,11 +218,20 @@ export function ExpenseManager() {
       return;
     }
 
+    const nextCreditCardId =
+      form.payment_source === "card" && cards.some((card) => card.id === form.credit_card_id && card.is_active)
+        ? form.credit_card_id
+        : "";
+    const nextAccountId =
+      form.payment_source === "account" && accounts.some((account) => account.id === form.account_id && account.is_active)
+        ? form.account_id
+        : "";
+
     setForm({
       ...emptyForm,
       payment_source: form.payment_source,
-      credit_card_id: form.payment_source === "card" ? form.credit_card_id : "",
-      account_id: form.payment_source === "account" ? form.account_id : "",
+      credit_card_id: nextCreditCardId,
+      account_id: nextAccountId,
       category_id: form.category_id,
     });
     setEditingExpenseId(null);
@@ -356,7 +368,26 @@ export function ExpenseManager() {
     return categories.find((category) => category.id === categoryId)?.name ?? "Sin categoria";
   }
 
-  const filteredExpenses = expenses.filter((expense) => isExpenseInSelectedPeriod({ expense, cards, filter: periodFilter }));
+  function changeSourceFilter(nextFilter: ExpenseSourceFilter) {
+    setSourceFilter(nextFilter);
+    if (nextFilter !== "card") setCardFilterId("");
+    if (nextFilter !== "account") setAccountFilterId("");
+  }
+
+  const activeCards = cards.filter((card) => card.is_active);
+  const activeAccounts = accounts.filter((account) => account.is_active);
+  const selectableCards = buildSelectableSources(cards, activeCards, form.credit_card_id, editingExpenseId);
+  const selectableAccounts = buildSelectableSources(accounts, activeAccounts, form.account_id, editingExpenseId);
+
+  const filteredExpenses = expenses.filter((expense) =>
+    isExpenseInSelectedPeriod({ expense, cards, filter: periodFilter }) &&
+    isExpenseMatchingSourceFilter({
+      expense,
+      sourceFilter,
+      cardFilterId,
+      accountFilterId,
+    })
+  );
 
   return (
     <div className="grid max-w-full min-w-0 gap-6 lg:grid-cols-[420px_minmax(0,1fr)]">
@@ -396,13 +427,13 @@ export function ExpenseManager() {
                 value={form.credit_card_id}
               >
                 <option value="">Selecciona una tarjeta</option>
-                {cards.map((card) => (
+                {selectableCards.map((card) => (
                   <option key={card.id} value={card.id}>
-                    {card.name} - {card.bank}
+                    {card.name} - {card.bank}{card.is_active ? "" : " (inactiva)"}
                   </option>
                 ))}
               </select>
-              {!isLoading && cards.length === 0 ? (
+              {!isLoading && activeCards.length === 0 ? (
                 <span className="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   No tienes tarjetas activas para registrar este movimiento.
                 </span>
@@ -418,16 +449,16 @@ export function ExpenseManager() {
                 value={form.account_id}
               >
                 <option value="">Selecciona una cuenta</option>
-                {accounts.map((account) => (
+                {selectableAccounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    {account.name} - {account.currency}
+                    {account.name} - {account.currency}{account.is_active ? "" : " (inactiva)"}
                   </option>
                 ))}
               </select>
               <span className="mt-2 block text-xs text-slate-500">
                 El gasto creara un movimiento de egreso y reducira el saldo de la cuenta.
               </span>
-              {!isLoading && accounts.length === 0 ? (
+              {!isLoading && activeAccounts.length === 0 ? (
                 <span className="mt-2 block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   No tienes cuentas activas para registrar este movimiento.
                 </span>
@@ -548,6 +579,16 @@ export function ExpenseManager() {
             <p className="mt-1 text-sm text-slate-600">Vista actual: {getPeriodLabel(periodFilter)}.</p>
           </div>
           <PeriodFilterControls value={periodFilter} onChange={setPeriodFilter} />
+          <ExpenseSourceFilters
+            accountFilterId={accountFilterId}
+            accounts={accounts}
+            cardFilterId={cardFilterId}
+            cards={cards}
+            onAccountChange={setAccountFilterId}
+            onCardChange={setCardFilterId}
+            onSourceChange={changeSourceFilter}
+            sourceFilter={sourceFilter}
+          />
         </div>
         {isLoading ? <p className="mt-4 text-sm text-slate-600">Cargando gastos...</p> : null}
         <div className="mt-4 w-full max-w-full overflow-x-auto">
@@ -619,6 +660,146 @@ export function ExpenseManager() {
       </div>
     </div>
   );
+}
+
+function ExpenseSourceFilters({
+  accountFilterId,
+  accounts,
+  cardFilterId,
+  cards,
+  onAccountChange,
+  onCardChange,
+  onSourceChange,
+  sourceFilter,
+}: {
+  accountFilterId: string;
+  accounts: Account[];
+  cardFilterId: string;
+  cards: CreditCard[];
+  onAccountChange: (accountId: string) => void;
+  onCardChange: (cardId: string) => void;
+  onSourceChange: (source: ExpenseSourceFilter) => void;
+  sourceFilter: ExpenseSourceFilter;
+}) {
+  return (
+    <div className="max-w-full rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-700">Origen del gasto</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Filtra por tarjeta o por cuenta/efectivo sin cambiar tus registros.
+          </p>
+          <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+            <SourceFilterButton active={sourceFilter === "all"} onClick={() => onSourceChange("all")}>
+              Todos
+            </SourceFilterButton>
+            <SourceFilterButton active={sourceFilter === "card"} onClick={() => onSourceChange("card")}>
+              Tarjeta
+            </SourceFilterButton>
+            <SourceFilterButton active={sourceFilter === "account"} onClick={() => onSourceChange("account")}>
+              Cuenta / efectivo
+            </SourceFilterButton>
+          </div>
+        </div>
+
+        {sourceFilter === "card" ? (
+          <label className="block min-w-0 lg:w-72">
+            <span className="text-sm font-medium text-slate-700">Tarjeta</span>
+            <select
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              onChange={(event) => onCardChange(event.target.value)}
+              value={cardFilterId}
+            >
+              <option value="">Todas las tarjetas</option>
+              {cards.map((card) => (
+                <option key={card.id} value={card.id}>
+                  {card.name} - {card.bank}{card.is_active ? "" : " (inactiva)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
+        {sourceFilter === "account" ? (
+          <label className="block min-w-0 lg:w-72">
+            <span className="text-sm font-medium text-slate-700">Cuenta / efectivo</span>
+            <select
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              onChange={(event) => onAccountChange(event.target.value)}
+              value={accountFilterId}
+            >
+              <option value="">Todas las cuentas</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} - {account.currency}{account.is_active ? "" : " (inactiva)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function SourceFilterButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`max-w-full rounded-md border px-3 py-2 text-sm ${
+        active
+          ? "border-teal-600 bg-white text-teal-700 shadow-sm"
+          : "border-slate-200 bg-white/70 text-slate-700 hover:border-teal-500"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function isExpenseMatchingSourceFilter({
+  accountFilterId,
+  cardFilterId,
+  expense,
+  sourceFilter,
+}: {
+  accountFilterId: string;
+  cardFilterId: string;
+  expense: Expense;
+  sourceFilter: ExpenseSourceFilter;
+}) {
+  if (sourceFilter === "card") {
+    return Boolean(expense.credit_card_id) && (!cardFilterId || expense.credit_card_id === cardFilterId);
+  }
+
+  if (sourceFilter === "account") {
+    return Boolean(expense.account_id) && (!accountFilterId || expense.account_id === accountFilterId);
+  }
+
+  return true;
+}
+
+function buildSelectableSources<T extends { id: string; is_active: boolean }>(
+  allSources: T[],
+  activeSources: T[],
+  selectedId: string,
+  editingId: string | null
+) {
+  if (!editingId || !selectedId || activeSources.some((source) => source.id === selectedId)) {
+    return activeSources;
+  }
+
+  const selectedSource = allSources.find((source) => source.id === selectedId);
+  return selectedSource ? [selectedSource, ...activeSources] : activeSources;
 }
 
 function validateExpenseForm(form: typeof emptyForm) {
