@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { MoneyAmount } from "@/components/ui/money-amount";
 import { DEFAULT_CURRENCY, SUPPORTED_CURRENCIES, groupMoneyByCurrency, isSupportedCurrency, normalizeCurrency } from "@/lib/currencies";
 import { formatDateForPreference, formatDateTimeForPreference } from "@/lib/date-format";
@@ -125,6 +125,10 @@ type HoldingSummary = {
 
 type InvestmentSection = "summary" | "positions" | "assets" | "operations" | "platforms";
 type InvestmentFormKey = "platform" | "asset" | "holding" | "transaction" | null;
+type InvestmentEditingContext = {
+  title: string;
+  description: string;
+};
 type InvestmentGroupKey = "crypto" | "stock_etf" | "other";
 type SortDirection = "asc" | "desc";
 type SortConfig<TKey extends string> = {
@@ -160,6 +164,7 @@ export function InvestmentManager() {
   const [activeSection, setActiveSection] = useState<InvestmentSection>("positions");
   const [openForm, setOpenForm] = useState<InvestmentFormKey>(null);
   const [operationFilter, setOperationFilter] = useState<InvestmentGroupKey | "all">("all");
+  const formSectionRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     loadData();
@@ -584,6 +589,12 @@ export function InvestmentManager() {
     setOpenForm(null);
   }
 
+  function scrollToForm() {
+    window.setTimeout(() => {
+      formSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+
   const holdingSummaries = holdings.map((holding) => buildHoldingSummary(holding, platforms, assets));
   const totalByCurrency = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
   const valueByPlatform = buildValueByPlatform(holdingSummaries).slice(0, 6);
@@ -604,6 +615,16 @@ export function InvestmentManager() {
     operationFilter === "all" || getInvestmentGroupForTransaction(transaction, assets) === operationFilter
   );
   const recentTransactions = filteredTransactions.slice(0, 8);
+  const editingContext = buildEditingContext({
+    assets,
+    editingAssetId,
+    editingHoldingId,
+    editingPlatformId,
+    editingTransactionId,
+    holdings,
+    platforms,
+    transactions,
+  });
 
   if (isLoading) return <StatusPanel text="Cargando inversiones..." />;
 
@@ -660,10 +681,14 @@ export function InvestmentManager() {
 
       {message ? <StatusMessage message={message} /> : null}
 
-      <InvestmentFormToolbar activeForm={openForm} onOpen={openCreateForm} />
+      <InvestmentFormToolbar activeForm={openForm} editingContext={editingContext} onOpen={openCreateForm} />
 
       {openForm ? (
-        <section className="min-w-0">
+        <section
+          className={`min-w-0 scroll-mt-28 ${editingContext ? "rounded-xl border border-teal-200 bg-teal-50/40 p-2 shadow-sm" : ""}`}
+          ref={formSectionRef}
+        >
+          {editingContext ? <EditingNotice context={editingContext} /> : null}
           {openForm === "platform" ? (
             <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={cancelPlatformForm} />
           ) : null}
@@ -871,6 +896,7 @@ export function InvestmentManager() {
       is_active: platform.is_active,
     });
     setMessage({ type: "info", text: "Editando plataforma." });
+    scrollToForm();
   }
 
   function startEditAsset(asset: InvestmentAsset) {
@@ -890,6 +916,7 @@ export function InvestmentManager() {
       is_active: asset.is_active,
     });
     setMessage({ type: "info", text: "Editando activo." });
+    scrollToForm();
   }
 
   function startEditHolding(holding: Holding) {
@@ -904,6 +931,7 @@ export function InvestmentManager() {
       notes: holding.notes ?? "",
     });
     setMessage({ type: "info", text: "Editando posicion." });
+    scrollToForm();
   }
 
   function startEditTransaction(transaction: InvestmentTransaction) {
@@ -922,14 +950,83 @@ export function InvestmentManager() {
       description: transaction.description ?? "",
     });
     setMessage({ type: "info", text: "Editando operacion." });
+    scrollToForm();
   }
+}
+
+function buildEditingContext({
+  assets,
+  editingAssetId,
+  editingHoldingId,
+  editingPlatformId,
+  editingTransactionId,
+  holdings,
+  platforms,
+  transactions,
+}: {
+  assets: InvestmentAsset[];
+  editingAssetId: string | null;
+  editingHoldingId: string | null;
+  editingPlatformId: string | null;
+  editingTransactionId: string | null;
+  holdings: Holding[];
+  platforms: InvestmentPlatform[];
+  transactions: InvestmentTransaction[];
+}): InvestmentEditingContext | null {
+  if (editingPlatformId) {
+    const platform = platforms.find((item) => item.id === editingPlatformId);
+    return {
+      title: `Editando plataforma: ${platform?.name ?? "Plataforma"}`,
+      description: "Estas editando un registro existente. Guarda cambios o cancela para volver al modo de creacion.",
+    };
+  }
+
+  if (editingAssetId) {
+    const asset = assets.find((item) => item.id === editingAssetId);
+    return {
+      title: `Editando activo: ${asset ? `${asset.symbol} - ${asset.name}` : "Activo"}`,
+      description: "Estas editando un registro existente. Guarda cambios o cancela para volver al modo de creacion.",
+    };
+  }
+
+  if (editingHoldingId) {
+    const holding = holdings.find((item) => item.id === editingHoldingId);
+    const asset = assets.find((item) => item.id === holding?.asset_id);
+    const platform = platforms.find((item) => item.id === holding?.platform_id);
+    return {
+      title: `Editando posicion: ${asset?.symbol ?? "Activo"} en ${platform?.name ?? "Plataforma"}`,
+      description: "Estas editando un registro existente. El costo promedio unitario sigue siendo costo por unidad, no monto total invertido.",
+    };
+  }
+
+  if (editingTransactionId) {
+    const transaction = transactions.find((item) => item.id === editingTransactionId);
+    const asset = assets.find((item) => item.id === transaction?.asset_id);
+    return {
+      title: `Editando operacion: ${transaction ? transactionTypeLabels[transaction.transaction_type] : "Operacion"} de ${asset?.symbol ?? "activo"}`,
+      description: "Estas editando un registro existente. Guarda cambios o cancela para descartar la edicion.",
+    };
+  }
+
+  return null;
+}
+
+function EditingNotice({ context }: { context: InvestmentEditingContext }) {
+  return (
+    <div className="mb-3 rounded-lg border border-teal-200 bg-white p-3 text-sm text-teal-900 shadow-sm">
+      <p className="font-semibold">{context.title}</p>
+      <p className="mt-1 text-xs text-teal-800">{context.description}</p>
+    </div>
+  );
 }
 
 function InvestmentFormToolbar({
   activeForm,
+  editingContext,
   onOpen,
 }: {
   activeForm: InvestmentFormKey;
+  editingContext: InvestmentEditingContext | null;
   onOpen: (formKey: Exclude<InvestmentFormKey, null>) => void;
 }) {
   const actions: Array<{ key: Exclude<InvestmentFormKey, null>; label: string; description: string }> = [
@@ -949,6 +1046,12 @@ function InvestmentFormToolbar({
           </p>
         </div>
       </div>
+      {editingContext ? (
+        <div className="mt-4 rounded-md border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
+          <p className="font-semibold">{editingContext.title}</p>
+          <p className="mt-1 text-xs text-teal-800">{editingContext.description}</p>
+        </div>
+      ) : null}
       <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {actions.map((action) => {
           const isActive = activeForm === action.key;
@@ -1089,7 +1192,7 @@ function PlatformForm({ form, editingId, onSubmit, onChange, onCancel }: {
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
         <Checkbox label="Activa" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar plataforma" : "Crear plataforma"} onCancel={onCancel} />
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar cambios" : "Crear plataforma"} onCancel={onCancel} />
     </form>
   );
 }
@@ -1172,7 +1275,7 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
         <Checkbox label="Activo" checked={form.is_active} onChange={(checked) => onChange({ ...form, is_active: checked })} />
       </div>
-      <FormButtons disabled={isSaving} editing={Boolean(editingId)} submitLabel={isSaving ? "Validando..." : editingId ? "Guardar activo" : "Crear activo"} onCancel={onCancel} />
+      <FormButtons disabled={isSaving} editing={Boolean(editingId)} submitLabel={isSaving ? "Validando..." : editingId ? "Guardar cambios" : "Crear activo"} onCancel={onCancel} />
     </form>
   );
 }
@@ -1244,12 +1347,16 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
           </p>
         ) : null}
         <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
-        <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-          <p className="font-semibold">Costo promedio unitario</p>
-          <p className="mt-1">Este campo es costo por unidad, no monto total invertido.</p>
-          <p className="mt-1">Ejemplo: si tu broker muestra cost basis total de $50 y tienes 0.184 acciones, captura 50 / 0.184 = 271.74.</p>
-        </div>
-        <TextInput label="Costo promedio unitario opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
+        <TextInput
+          helpText="Este campo es costo por unidad, no monto total invertido. Si tu broker muestra cost basis total de $50 y tienes 0.184 acciones, captura 50 / 0.184 = 271.74."
+          label="Costo promedio unitario (opcional)"
+          min="0"
+          required={false}
+          step="0.00000001"
+          type="number"
+          value={form.average_cost}
+          onChange={(value) => onChange({ ...form, average_cost: value })}
+        />
         <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
           <TextInput
             label="Monto total invertido / cost basis"
@@ -1280,7 +1387,7 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
         </div>
         <TextInput label="Notas opcionales" required={false} value={form.notes} onChange={(value) => onChange({ ...form, notes: value })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar posicion" : "Crear posicion"} onCancel={onCancel} />
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar cambios" : "Crear posicion"} onCancel={onCancel} />
     </form>
   );
 }
@@ -1329,7 +1436,7 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
         <TextInput label="Comision opcional" min="0" step="0.01" type="number" value={form.fees} onChange={(value) => onChange({ ...form, fees: value })} />
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar operacion" : "Registrar operacion"} onCancel={onCancel} />
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar cambios" : "Registrar operacion"} onCancel={onCancel} />
     </form>
   );
 }
@@ -1974,7 +2081,8 @@ function CurrencySelect({ value, onChange }: { value: string; onChange: (value: 
   );
 }
 
-function TextInput({ label, value, onChange, type = "text", min, step, required = true, placeholder }: {
+function TextInput({ helpText, label, value, onChange, type = "text", min, step, required = true, placeholder }: {
+  helpText?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -1986,7 +2094,10 @@ function TextInput({ label, value, onChange, type = "text", min, step, required 
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+        {label}
+        {helpText ? <HelpTooltip text={helpText} /> : null}
+      </span>
       <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm" min={min} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} step={step} type={type} value={value} />
     </label>
   );
