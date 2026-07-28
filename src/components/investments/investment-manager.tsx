@@ -205,6 +205,32 @@ export function InvestmentManager() {
     setIsLoading(false);
   }
 
+  async function loadAssetsOnly() {
+    if (!supabase) {
+      setMessage({ type: "error", text: "Falta conectar Supabase para refrescar precios." });
+      return;
+    }
+
+    const userId = await getUserId();
+    if (!userId) {
+      setMessage({ type: "error", text: "Primero inicia sesion para refrescar precios." });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("assets")
+      .select("*")
+      .eq("user_id", userId)
+      .order("symbol");
+
+    if (error) {
+      setMessage({ type: "error", text: getFriendlyInvestmentError(error.message) });
+      return;
+    }
+
+    setAssets((data ?? []) as InvestmentAsset[]);
+  }
+
   async function getUserId() {
     if (!supabase) return null;
     const { data } = await supabase.auth.getUser();
@@ -415,7 +441,7 @@ export function InvestmentManager() {
         type: result.failed > 0 ? "error" : result.updated > 0 ? "success" : "info",
         text: result.updated > 0 && result.failed === 0 ? successMessage : result.message ?? emptyMessage,
       });
-      await loadData();
+      await loadAssetsOnly();
     } catch {
       setMessage({ type: "error", text: assetId ? "No se pudo actualizar este activo. Se conservo el precio anterior." : "No pude conectar con el actualizador de precios. Se conservaron los precios actuales." });
     } finally {
@@ -556,6 +582,9 @@ export function InvestmentManager() {
   const cryptoPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "crypto");
   const stockEtfPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "stock_etf");
   const otherPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "other");
+  const cryptoTotals = groupMoneyByCurrency(cryptoPositions, (summary) => summary.value, (summary) => summary.asset?.currency);
+  const stockEtfTotals = groupMoneyByCurrency(stockEtfPositions, (summary) => summary.value, (summary) => summary.asset?.currency);
+  const otherTotals = groupMoneyByCurrency(otherPositions, (summary) => summary.value, (summary) => summary.asset?.currency);
   const cryptoAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "crypto");
   const stockEtfAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "stock_etf");
   const otherAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "other");
@@ -571,20 +600,17 @@ export function InvestmentManager() {
   return (
     <div className="max-w-full space-y-6 overflow-x-hidden">
       <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Valor total estimado" value={<MoneyTotals totals={totalByCurrency} />} />
-        <SummaryCard label="Posiciones" value={String(holdings.length)} />
-        <SummaryCard label="Posiciones crypto" value={String(cryptoPositions.length)} />
-        <SummaryCard label="Acciones / ETFs" value={String(stockEtfPositions.length)} />
-        <SummaryCard label="Activos registrados" value={String(assets.length)} />
-        <SummaryCard label="Precios automaticos" value={String(automaticPriceAssetCount)} />
-        <SummaryCard label="Manual o pendiente" value={String(manualOrPendingAssetCount)} />
-        <SummaryCard label="Plataformas activas" value={String(platforms.filter((item) => item.is_active).length)} />
+        <SummaryCard label="Crypto" detail="Valor estimado" value={<MoneyTotals totals={cryptoTotals} />} />
+        <SummaryCard label="Acciones / ETFs" detail="Valor estimado" value={<MoneyTotals totals={stockEtfTotals} />} />
+        <SummaryCard label="Otros" detail="Fondos, bonos y manuales" value={<MoneyTotals totals={otherTotals} />} />
+        <SummaryCard label="Total" detail="Sin convertir monedas" value={<MoneyTotals totals={totalByCurrency} />} />
       </section>
 
       <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
-        <p>
-          Los precios pueden ser manuales, venir de CoinGecko para crypto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente.
-        </p>
+        <div className="flex min-w-0 items-center gap-2">
+          <p className="font-medium">Actualizar precios automaticos</p>
+          <HelpTooltip text="Los precios pueden ser manuales, venir de CoinGecko para crypto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente." />
+        </div>
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:min-w-[360px]">
           <button
             className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300"
@@ -655,15 +681,13 @@ export function InvestmentManager() {
 
       {activeSection === "summary" ? (
         <section className="grid min-w-0 gap-6 xl:grid-cols-3">
-          <GuidanceCard
-            title="Flujo recomendado"
-            items={[
-              "Primero crea la plataforma o broker.",
-              "Despues crea el activo una sola vez.",
-              "Luego registra una posicion con la cantidad que tienes.",
-              "Usa operaciones solo como historial por ahora.",
-            ]}
-          />
+          <SimpleList title="Datos operativos">
+            <ListRow title="Posiciones" detail="Total registradas" value={String(holdings.length)} />
+            <ListRow title="Activos registrados" detail="Instrumentos unicos" value={String(assets.length)} />
+            <ListRow title="Precios automaticos" detail="CoinGecko o Alpha Vantage" value={String(automaticPriceAssetCount)} />
+            <ListRow title="Manual o pendiente" detail="Manual, sin actualizar o con error" value={String(manualOrPendingAssetCount)} />
+            <ListRow title="Plataformas activas" detail="Brokers, exchanges o wallets" value={String(platforms.filter((item) => item.is_active).length)} />
+          </SimpleList>
           <SimpleList title="Valor por plataforma">
             {valueByPlatform.map((item) => (
               <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
@@ -681,17 +705,14 @@ export function InvestmentManager() {
 
       {activeSection === "positions" ? (
         <section className="space-y-6">
-          <GuidanceCard
+          <SectionHeader
             title="Posiciones actuales"
-            items={[
-              "Una posicion representa cuanto tienes de un activo en una plataforma.",
-              "Un activo se crea una sola vez. Si lo tienes en varias plataformas, crea varias posiciones.",
-              "Las posiciones son las que alimentan el valor estimado de inversiones.",
-            ]}
+            helpText="Una posicion representa cuanto tienes de un activo en una plataforma. Un activo se crea una sola vez; si lo tienes en varias plataformas, crea varias posiciones."
           />
           <HoldingsTable
             dateFormat={dateFormat}
-            description="Crypto usa CoinGecko ID para precios automaticos."
+            helpText="Crypto usa CoinGecko ID para precios automaticos."
+            description={`${cryptoPositions.length} posicion${cryptoPositions.length === 1 ? "" : "es"}`}
             emptyText="No hay posiciones crypto."
             rows={cryptoPositions}
             title="Crypto"
@@ -700,7 +721,8 @@ export function InvestmentManager() {
           />
           <HoldingsTable
             dateFormat={dateFormat}
-            description="Acciones y ETFs usan ticker de Alpha Vantage para precios automaticos."
+            helpText="Acciones y ETFs usan ticker de Alpha Vantage para precios automaticos."
+            description={`${stockEtfPositions.length} posicion${stockEtfPositions.length === 1 ? "" : "es"}`}
             emptyText="No hay posiciones de acciones o ETFs."
             rows={stockEtfPositions}
             title="Acciones y ETFs"
@@ -709,7 +731,8 @@ export function InvestmentManager() {
           />
           <HoldingsTable
             dateFormat={dateFormat}
-            description="Otros activos se mantienen con precio manual por ahora."
+            helpText="Otros activos se mantienen con precio manual por ahora."
+            description={`${otherPositions.length} posicion${otherPositions.length === 1 ? "" : "es"}`}
             emptyText="No hay otros activos registrados como posicion."
             rows={otherPositions}
             title="Otros activos"
@@ -721,18 +744,15 @@ export function InvestmentManager() {
 
       {activeSection === "assets" ? (
         <section className="space-y-6">
-          <GuidanceCard
+          <SectionHeader
             title="Activos y precios"
-            items={[
-              "Crypto usa CoinGecko ID: BTC debe configurarse como bitcoin.",
-              "Acciones y ETFs usan ticker de Alpha Vantage: AAPL, MSFT, VOO o QQQ.",
-              "El precio actual alimenta el valor estimado de tus posiciones.",
-            ]}
+            helpText="Crypto usa CoinGecko ID. Acciones y ETFs usan ticker de Alpha Vantage. El precio actual alimenta el valor estimado de tus posiciones."
           />
           <AssetsTable
             assets={cryptoAssets}
             dateFormat={dateFormat}
-            description="Crypto con precio manual o CoinGecko."
+            helpText="Crypto usa CoinGecko ID: BTC debe configurarse como bitcoin."
+            description={`${cryptoAssets.length} activo${cryptoAssets.length === 1 ? "" : "s"}`}
             emptyText="No hay activos crypto."
             isUpdatingPrices={Boolean(updatingPriceGroup)}
             title="Crypto"
@@ -750,7 +770,8 @@ export function InvestmentManager() {
           <AssetsTable
             assets={stockEtfAssets}
             dateFormat={dateFormat}
-            description="Acciones y ETFs con precio manual o Alpha Vantage."
+            helpText="Acciones y ETFs usan ticker de Alpha Vantage: AAPL, MSFT, VOO o QQQ."
+            description={`${stockEtfAssets.length} activo${stockEtfAssets.length === 1 ? "" : "s"}`}
             emptyText="No hay acciones o ETFs."
             isUpdatingPrices={Boolean(updatingPriceGroup)}
             title="Acciones y ETFs"
@@ -768,7 +789,8 @@ export function InvestmentManager() {
           <AssetsTable
             assets={otherAssets}
             dateFormat={dateFormat}
-            description="Fondos, bonos, efectivo de inversion u otros instrumentos manuales."
+            helpText="Fondos, bonos, efectivo de inversion u otros instrumentos se mantienen manuales por ahora."
+            description={`${otherAssets.length} activo${otherAssets.length === 1 ? "" : "s"}`}
             emptyText="No hay otros activos."
             isUpdatingPrices={Boolean(updatingPriceGroup)}
             title="Otros / manuales"
@@ -788,13 +810,9 @@ export function InvestmentManager() {
 
       {activeSection === "operations" ? (
         <section className="space-y-4">
-          <GuidanceCard
+          <SectionHeader
             title="Operaciones"
-            items={[
-              "Las operaciones son historial.",
-              "Por ahora no modifican automaticamente la cantidad de la posicion.",
-              "Si compras o vendes, ajusta tambien la posicion si quieres que el valor estimado cambie.",
-            ]}
+            helpText="Las operaciones son historial. Por ahora no modifican automaticamente la cantidad de la posicion."
           />
           <OperationFilters value={operationFilter} onChange={setOperationFilter} />
           <TransactionsTable
@@ -809,16 +827,12 @@ export function InvestmentManager() {
       ) : null}
 
       {activeSection === "platforms" ? (
-        <section className="grid min-w-0 gap-6 xl:grid-cols-2">
-          <GuidanceCard
+        <section className="space-y-4">
+          <SectionHeader
             title="Plataformas / brokers"
-            items={[
-              "La plataforma indica donde tienes la inversion.",
-              "Una misma accion, ETF o crypto puede existir como posicion en distintas plataformas.",
-              "Las plataformas inactivas se conservan para historial.",
-            ]}
+            helpText="La plataforma indica donde tienes la inversion: broker, exchange, wallet o banco. Una misma accion, ETF o crypto puede existir como posicion en distintas plataformas."
           />
-          <SimpleList title="Plataformas / brokers">
+          <SimpleList title="Plataformas / brokers" helpText="Las plataformas inactivas se conservan para historial.">
             {platforms.map((platform) => (
               <ListRow
                 key={platform.id}
@@ -986,19 +1000,30 @@ function InvestmentSectionTabs({
   );
 }
 
-function GuidanceCard({ title, items }: { title: string; items: string[] }) {
+function SectionHeader({ title, helpText }: { title: string; helpText: string }) {
   return (
-    <div className="rounded-lg border border-teal-100 bg-teal-50/70 p-5 text-sm text-teal-950">
-      <h2 className="font-semibold">{title}</h2>
-      <ul className="mt-3 space-y-2">
-        {items.map((item) => (
-          <li className="flex gap-2" key={item}>
-            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
+    <div className="flex min-w-0 items-center gap-2">
+      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+      <HelpTooltip text={helpText} />
     </div>
+  );
+}
+
+function HelpTooltip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex">
+      <button
+        aria-label={text}
+        className="flex h-6 w-6 items-center justify-center rounded-full border border-teal-200 bg-teal-50 text-xs font-semibold text-teal-700 outline-none transition hover:border-teal-400 hover:bg-teal-100 focus:border-teal-500 focus:ring-2 focus:ring-teal-200"
+        title={text}
+        type="button"
+      >
+        ?
+      </button>
+      <span className="pointer-events-none absolute left-0 top-8 z-20 hidden w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs font-normal leading-relaxed text-slate-600 shadow-lg group-focus-within:block group-hover:block sm:w-72">
+        {text}
+      </span>
+    </span>
   );
 }
 
@@ -1258,6 +1283,7 @@ function HoldingsTable({
   dateFormat,
   description,
   emptyText,
+  helpText,
   rows,
   title,
   onEdit,
@@ -1266,13 +1292,14 @@ function HoldingsTable({
   dateFormat: string;
   description?: string;
   emptyText: string;
+  helpText?: string;
   rows: HoldingSummary[];
   title: string;
   onEdit: (holding: Holding) => void;
   onDelete: (holding: Holding) => void;
 }) {
   return (
-    <TableCard title={title} description={description}>
+    <TableCard title={title} description={description} helpText={helpText}>
       <table className="w-full min-w-[1180px] text-left text-sm">
         <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo / instrumento</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
@@ -1304,6 +1331,7 @@ function AssetsTable({
   dateFormat,
   description,
   emptyText,
+  helpText,
   isUpdatingPrices,
   title,
   updatingAssetId,
@@ -1315,6 +1343,7 @@ function AssetsTable({
   dateFormat: string;
   description?: string;
   emptyText: string;
+  helpText?: string;
   isUpdatingPrices: boolean;
   title: string;
   updatingAssetId: string | null;
@@ -1323,7 +1352,7 @@ function AssetsTable({
   onUpdate: (asset: InvestmentAsset) => void;
 }) {
   return (
-    <TableCard title={title} description={description}>
+    <TableCard title={title} description={description} helpText={helpText}>
       <table className="w-full min-w-[1120px] text-left text-sm">
         <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo / ticker</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Estado precio</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Actualizar precio</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
@@ -1764,19 +1793,23 @@ function MoneyTotals({ totals }: { totals: Array<{ currency: string; amount: num
   return <span className="space-y-1">{totals.map((total) => <span className="block" key={total.currency}><MoneyAmount amount={total.amount} currency={total.currency} /></span>)}</span>;
 }
 
-function SummaryCard({ label, value }: { label: string; value: React.ReactNode }) {
+function SummaryCard({ label, detail, value }: { label: string; detail?: string; value: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
+      {detail ? <p className="mt-2 text-xs text-slate-500">{detail}</p> : null}
     </div>
   );
 }
 
-function SimpleList({ title, children }: { title: string; children: React.ReactNode }) {
+function SimpleList({ title, helpText, children }: { title: string; helpText?: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="font-semibold text-slate-950">{title}</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="font-semibold text-slate-950">{title}</h2>
+        {helpText ? <HelpTooltip text={helpText} /> : null}
+      </div>
       <div className="mt-3 space-y-3">{children}</div>
     </div>
   );
@@ -1797,10 +1830,13 @@ function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; de
   );
 }
 
-function TableCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+function TableCard({ title, description, helpText, children }: { title: string; description?: string; helpText?: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        {helpText ? <HelpTooltip text={helpText} /> : null}
+      </div>
       {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
       <div className="mt-4 max-w-full overflow-x-auto">{children}</div>
     </div>
