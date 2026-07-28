@@ -25,6 +25,12 @@ import type {
   Expense,
   Holding,
   InvestmentAsset,
+  InvestmentAssetType,
+  InvestmentPlatform,
+  InvestmentPlatformType,
+  InvestmentPriceSource,
+  InvestmentTransaction,
+  InvestmentTransactionType,
   NetWorthSnapshot,
   Payment,
   PaymentType,
@@ -38,6 +44,51 @@ const paymentTypeLabels: Record<PaymentType, string> = {
   other: "Otro",
 };
 
+const platformTypeLabels: Record<InvestmentPlatformType, string> = {
+  broker: "Broker",
+  crypto_exchange: "Exchange cripto",
+  wallet: "Wallet",
+  bank: "Banco",
+  retirement: "Afore/retiro",
+  other: "Otra",
+};
+
+const assetTypeLabels: Record<InvestmentAssetType, string> = {
+  crypto: "Cripto",
+  stock: "Accion",
+  etf: "ETF",
+  fund: "Fondo",
+  bond: "Bono",
+  investment_cash: "Efectivo inversion",
+  other: "Otro",
+};
+
+const investmentGroupLabels: Record<InvestmentGroupKey, string> = {
+  crypto: "Crypto",
+  stock_etf: "Acciones / ETFs",
+  other: "Otros",
+};
+
+const investmentTransactionTypeLabels: Record<InvestmentTransactionType, string> = {
+  buy: "Compra",
+  sell: "Venta",
+  dividend: "Dividendo",
+  interest: "Interes",
+  deposit: "Deposito",
+  withdrawal: "Retiro",
+  adjustment: "Ajuste",
+};
+
+const investmentPriceSourceLabels: Record<InvestmentPriceSource, string> = {
+  manual: "Manual",
+  coingecko: "CoinGecko",
+  coinmarketcap: "CoinMarketCap",
+  alpha_vantage: "Alpha Vantage",
+  twelve_data: "Twelve Data",
+};
+
+const INVESTMENT_STALE_PRICE_DAYS = 7;
+
 type Message = {
   type: "error" | "info" | "success";
   text: string;
@@ -48,6 +99,43 @@ type ReportRow = {
   label: string;
   currency: string;
   value: number;
+};
+
+type InvestmentGroupKey = "crypto" | "stock_etf" | "other";
+
+type InvestmentHoldingReportRow = {
+  holding: Holding;
+  asset: InvestmentAsset;
+  platform: InvestmentPlatform | undefined;
+  group: InvestmentGroupKey;
+  quantity: number;
+  currentPrice: number;
+  value: number;
+  currency: string;
+  cost: number | null;
+  unrealizedGain: number | null;
+  unrealizedPercent: number | null;
+};
+
+type InvestmentReport = {
+  holdingRows: InvestmentHoldingReportRow[];
+  totalsByCurrency: Array<{ currency: string; amount: number }>;
+  totalsByGroup: Array<{ group: InvestmentGroupKey; currency: string; amount: number }>;
+  totalsByPlatform: Array<{ platformId: string; platformName: string; platformType: InvestmentPlatformType | null; currency: string; amount: number }>;
+  concentrationByAsset: Array<{ assetId: string; symbol: string; name: string; assetType: InvestmentAssetType; currency: string; value: number; percent: number }>;
+  priceStatus: {
+    manualCount: number;
+    coingeckoCount: number;
+    alphaVantageCount: number;
+    otherAutomaticCount: number;
+    withoutUpdate: InvestmentAsset[];
+    withError: InvestmentAsset[];
+    stale: InvestmentAsset[];
+  };
+  approximateGainRows: InvestmentHoldingReportRow[];
+  approximateGainTotals: Array<{ currency: string; value: number; cost: number; gain: number; percent: number | null }>;
+  recentTransactions: Array<{ transaction: InvestmentTransaction; asset: InvestmentAsset | undefined; platform: InvestmentPlatform | undefined; currency: string }>;
+  transactionTotals: Array<{ transactionType: InvestmentTransactionType; currency: string; amount: number; count: number }>;
 };
 
 type NetWorthSnapshotRow = {
@@ -126,6 +214,8 @@ export function BasicReports() {
   const [accountMovements, setAccountMovements] = useState<AccountMovement[]>([]);
   const [assets, setAssets] = useState<InvestmentAsset[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [investmentPlatforms, setInvestmentPlatforms] = useState<InvestmentPlatform[]>([]);
+  const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
   const [snapshots, setSnapshots] = useState<NetWorthSnapshot[]>([]);
   const [automaticExchangeRates, setAutomaticExchangeRates] = useState<AutomaticExchangeRate[]>([]);
   const [snapshotNotes, setSnapshotNotes] = useState("");
@@ -175,6 +265,8 @@ export function BasicReports() {
       { data: movementData, error: movementError },
       { data: assetData, error: assetError },
       { data: holdingData, error: holdingError },
+      { data: investmentPlatformData, error: investmentPlatformError },
+      { data: investmentTransactionData, error: investmentTransactionError },
       { data: snapshotData, error: snapshotError },
       { data: automaticExchangeRateData, error: automaticExchangeRateError },
     ] = await Promise.all([
@@ -186,6 +278,8 @@ export function BasicReports() {
       supabase.from("account_movements").select("*").eq("user_id", userData.user.id).order("movement_date", { ascending: false }),
       supabase.from("assets").select("*").eq("user_id", userData.user.id).order("symbol"),
       supabase.from("holdings").select("*").eq("user_id", userData.user.id).order("created_at", { ascending: false }),
+      supabase.from("platforms").select("*").eq("user_id", userData.user.id).order("name"),
+      supabase.from("investment_transactions").select("*").eq("user_id", userData.user.id).order("transaction_date", { ascending: false }),
       supabase
         .from("net_worth_snapshots")
         .select("*")
@@ -210,6 +304,8 @@ export function BasicReports() {
       movementError ||
       assetError ||
       holdingError ||
+      investmentPlatformError ||
+      investmentTransactionError ||
       snapshotError
     ) {
       setMessage({
@@ -223,6 +319,8 @@ export function BasicReports() {
           movementError?.message ??
           assetError?.message ??
           holdingError?.message ??
+          investmentPlatformError?.message ??
+          investmentTransactionError?.message ??
           (snapshotError ? getFriendlySnapshotError(snapshotError.message) : null) ??
           "No se pudieron cargar los reportes.",
       });
@@ -239,6 +337,8 @@ export function BasicReports() {
     setAccountMovements((movementData ?? []) as AccountMovement[]);
     setAssets((assetData ?? []) as InvestmentAsset[]);
     setHoldings((holdingData ?? []) as Holding[]);
+    setInvestmentPlatforms((investmentPlatformData ?? []) as InvestmentPlatform[]);
+    setInvestmentTransactions((investmentTransactionData ?? []) as InvestmentTransaction[]);
     setSnapshots((snapshotData ?? []) as NetWorthSnapshot[]);
     if (automaticExchangeRateError) {
       const missingAutomaticRatesTable = isMissingAutomaticExchangeRatesTableError(automaticExchangeRateError);
@@ -291,6 +391,7 @@ export function BasicReports() {
   });
   const snapshotHistoryRows = buildSnapshotHistoryRows(snapshots);
   const consolidatedNetWorth = buildConsolidatedNetWorth(currentNetWorthRows, automaticExchangeRates, baseCurrency, snapshots);
+  const investmentReport = buildInvestmentReport(holdings, assets, investmentPlatforms, investmentTransactions);
   const topCategory = expensesByCategory[0] ? `${expensesByCategory[0].label} (${expensesByCategory[0].currency})` : "Sin datos";
   const topSource = expensesBySource[0] ? `${expensesBySource[0].label} (${expensesBySource[0].currency})` : "Sin datos";
   const dayCount = getPeriodDayCount(periodFilter, cards);
@@ -515,6 +616,10 @@ export function BasicReports() {
         />
       </section>
 
+      <section className="min-w-0 scroll-mt-24" id="reporte-inversiones">
+        <InvestmentReportsLite report={investmentReport} dateFormat={dateFormat} />
+      </section>
+
       <section className="scroll-mt-24 space-y-4" id="reportes-basicos">
         <SectionIntro
           title="Reportes de gastos y pagos"
@@ -545,6 +650,194 @@ export function BasicReports() {
       </section>
     </div>
   );
+}
+
+function buildInvestmentReport(
+  holdings: Holding[],
+  assets: InvestmentAsset[],
+  platforms: InvestmentPlatform[],
+  transactions: InvestmentTransaction[]
+): InvestmentReport {
+  const holdingRows = holdings.flatMap((holding) => {
+    const asset = assets.find((item) => item.id === holding.asset_id);
+    if (!asset) return [];
+
+    const quantity = Number(holding.quantity);
+    const currentPrice = Number(asset.current_price ?? 0);
+    const value = quantity * currentPrice;
+    const currency = normalizeCurrency(asset.currency);
+    const cost = holding.average_cost === null ? null : quantity * Number(holding.average_cost);
+    const unrealizedGain = cost === null ? null : value - cost;
+    const unrealizedPercent = cost !== null && cost !== 0 ? (unrealizedGain ?? 0) / Math.abs(cost) * 100 : null;
+
+    return [{
+      holding,
+      asset,
+      platform: platforms.find((item) => item.id === holding.platform_id),
+      group: getInvestmentGroupForAsset(asset),
+      quantity,
+      currentPrice,
+      value,
+      currency,
+      cost,
+      unrealizedGain,
+      unrealizedPercent,
+    }];
+  });
+
+  const totalsByCurrency = groupMoneyByCurrency(holdingRows, (row) => row.value, (row) => row.currency);
+  const totalsByGroup = buildInvestmentTotalsByGroup(holdingRows);
+  const totalsByPlatform = buildInvestmentTotalsByPlatform(holdingRows);
+  const concentrationByAsset = buildInvestmentConcentrationByAsset(holdingRows);
+  const priceStatus = buildInvestmentPriceStatus(assets);
+  const approximateGainRows = holdingRows
+    .filter((row) => row.cost !== null)
+    .sort((a, b) => Math.abs(b.unrealizedGain ?? 0) - Math.abs(a.unrealizedGain ?? 0));
+  const approximateGainTotals = buildInvestmentApproximateGainTotals(approximateGainRows);
+  const recentTransactions = transactions.slice(0, 8).map((transaction) => {
+    const asset = assets.find((item) => item.id === transaction.asset_id);
+    const platform = platforms.find((item) => item.id === transaction.platform_id);
+    return {
+      transaction,
+      asset,
+      platform,
+      currency: normalizeCurrency(asset?.currency ?? platform?.currency),
+    };
+  });
+  const transactionTotals = buildInvestmentTransactionTotals(transactions, assets, platforms);
+
+  return {
+    holdingRows,
+    totalsByCurrency,
+    totalsByGroup,
+    totalsByPlatform,
+    concentrationByAsset,
+    priceStatus,
+    approximateGainRows,
+    approximateGainTotals,
+    recentTransactions,
+    transactionTotals,
+  };
+}
+
+function buildInvestmentTotalsByGroup(rows: InvestmentHoldingReportRow[]) {
+  const totals = new Map<string, { group: InvestmentGroupKey; currency: string; amount: number }>();
+
+  rows.forEach((row) => {
+    const key = `${row.group}-${row.currency}`;
+    const current = totals.get(key) ?? { group: row.group, currency: row.currency, amount: 0 };
+    current.amount += row.value;
+    totals.set(key, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => {
+    const groupComparison = investmentGroupLabels[a.group].localeCompare(investmentGroupLabels[b.group], "es-MX");
+    return groupComparison === 0 ? b.amount - a.amount : groupComparison;
+  });
+}
+
+function buildInvestmentTotalsByPlatform(rows: InvestmentHoldingReportRow[]) {
+  const totals = new Map<string, { platformId: string; platformName: string; platformType: InvestmentPlatformType | null; currency: string; amount: number }>();
+
+  rows.forEach((row) => {
+    const platformId = row.platform?.id ?? "missing-platform";
+    const platformName = row.platform?.name ?? "Plataforma no encontrada";
+    const platformType = row.platform?.platform_type ?? null;
+    const key = `${platformId}-${row.currency}`;
+    const current = totals.get(key) ?? { platformId, platformName, platformType, currency: row.currency, amount: 0 };
+    current.amount += row.value;
+    totals.set(key, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => {
+    const currencyComparison = a.currency.localeCompare(b.currency);
+    return currencyComparison === 0 ? b.amount - a.amount : currencyComparison;
+  });
+}
+
+function buildInvestmentConcentrationByAsset(rows: InvestmentHoldingReportRow[]) {
+  const totals = new Map<string, { assetId: string; symbol: string; name: string; assetType: InvestmentAssetType; currency: string; value: number }>();
+  const currencyTotals = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const key = `${row.asset.id}-${row.currency}`;
+    const current = totals.get(key) ?? {
+      assetId: row.asset.id,
+      symbol: row.asset.symbol,
+      name: row.asset.name,
+      assetType: row.asset.asset_type,
+      currency: row.currency,
+      value: 0,
+    };
+    current.value += row.value;
+    totals.set(key, current);
+    currencyTotals.set(row.currency, (currencyTotals.get(row.currency) ?? 0) + row.value);
+  });
+
+  return Array.from(totals.values())
+    .map((row) => ({
+      ...row,
+      percent: (currencyTotals.get(row.currency) ?? 0) > 0 ? row.value / (currencyTotals.get(row.currency) ?? 1) * 100 : 0,
+    }))
+    .sort((a, b) => {
+      const currencyComparison = a.currency.localeCompare(b.currency);
+      return currencyComparison === 0 ? b.value - a.value : currencyComparison;
+    })
+    .slice(0, 10);
+}
+
+function buildInvestmentPriceStatus(assets: InvestmentAsset[]) {
+  const automaticAssets = assets.filter(isInvestmentAutomaticPriceAsset);
+  const today = new Date();
+
+  return {
+    manualCount: assets.filter((asset) => !isInvestmentAutomaticPriceAsset(asset)).length,
+    coingeckoCount: assets.filter((asset) => getInvestmentPriceSourceLabel(asset) === "CoinGecko").length,
+    alphaVantageCount: assets.filter((asset) => getInvestmentPriceSourceLabel(asset) === "Alpha Vantage").length,
+    otherAutomaticCount: automaticAssets.filter((asset) => !["CoinGecko", "Alpha Vantage"].includes(getInvestmentPriceSourceLabel(asset))).length,
+    withoutUpdate: automaticAssets.filter((asset) => !asset.last_price_updated_at),
+    withError: assets.filter((asset) => Boolean(asset.last_price_error)),
+    stale: automaticAssets.filter((asset) => {
+      if (!asset.last_price_updated_at) return false;
+      return getDaysBetweenDates(new Date(asset.last_price_updated_at), today) > INVESTMENT_STALE_PRICE_DAYS;
+    }),
+  };
+}
+
+function buildInvestmentApproximateGainTotals(rows: InvestmentHoldingReportRow[]) {
+  const totals = new Map<string, { currency: string; value: number; cost: number; gain: number; percent: number | null }>();
+
+  rows.forEach((row) => {
+    if (row.cost === null || row.unrealizedGain === null) return;
+    const current = totals.get(row.currency) ?? { currency: row.currency, value: 0, cost: 0, gain: 0, percent: null };
+    current.value += row.value;
+    current.cost += row.cost;
+    current.gain += row.unrealizedGain;
+    current.percent = current.cost !== 0 ? current.gain / Math.abs(current.cost) * 100 : null;
+    totals.set(row.currency, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => a.currency.localeCompare(b.currency));
+}
+
+function buildInvestmentTransactionTotals(transactions: InvestmentTransaction[], assets: InvestmentAsset[], platforms: InvestmentPlatform[]) {
+  const totals = new Map<string, { transactionType: InvestmentTransactionType; currency: string; amount: number; count: number }>();
+
+  transactions.forEach((transaction) => {
+    const asset = assets.find((item) => item.id === transaction.asset_id);
+    const platform = platforms.find((item) => item.id === transaction.platform_id);
+    const currency = normalizeCurrency(asset?.currency ?? platform?.currency);
+    const key = `${transaction.transaction_type}-${currency}`;
+    const current = totals.get(key) ?? { transactionType: transaction.transaction_type, currency, amount: 0, count: 0 };
+    current.amount += Number(transaction.total_amount);
+    current.count += 1;
+    totals.set(key, current);
+  });
+
+  return Array.from(totals.values()).sort((a, b) => {
+    const typeComparison = investmentTransactionTypeLabels[a.transactionType].localeCompare(investmentTransactionTypeLabels[b.transactionType], "es-MX");
+    return typeComparison === 0 ? a.currency.localeCompare(b.currency) : typeComparison;
+  });
 }
 
 function buildNetWorthRows({
@@ -1054,6 +1347,7 @@ function ReportsInternalNavigation() {
     { href: "#historial-patrimonio", label: "Historial de patrimonio" },
     { href: "#tipos-cambio", label: "Tipos de cambio" },
     { href: "#patrimonio-consolidado", label: "Patrimonio consolidado" },
+    { href: "#reporte-inversiones", label: "Inversiones" },
     { href: "#reportes-basicos", label: "Gastos y pagos" },
   ];
 
@@ -1224,6 +1518,326 @@ function SnapshotsTable({ dateFormat, snapshots, onDelete }: { dateFormat: strin
         </table>
       </div>
     </div>
+  );
+}
+
+function InvestmentReportsLite({ report, dateFormat }: { report: InvestmentReport; dateFormat: string }) {
+  const distributionRows = report.totalsByGroup.map((row) => ({
+    id: `${row.group}-${row.currency}`,
+    label: investmentGroupLabels[row.group],
+    detail: row.currency,
+    currency: row.currency,
+    value: row.amount,
+  }));
+  const platformRows = report.totalsByPlatform.slice(0, 8).map((row) => ({
+    id: `${row.platformId}-${row.currency}`,
+    label: row.platformName,
+    detail: row.platformType ? platformTypeLabels[row.platformType] : "Sin tipo",
+    currency: row.currency,
+    value: row.amount,
+  }));
+
+  return (
+    <div className="min-w-0 space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <SectionIntro
+          title="Reporte de inversiones"
+          description="Distribucion actual de posiciones, plataformas y estado de precios."
+        />
+        <span className="inline-flex w-fit rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+          Sin convertir monedas
+        </span>
+      </div>
+
+      <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+        Este reporte usa posiciones actuales, precios actuales y operaciones registradas. No calcula rendimiento historico real, ganancia realizada, FIFO/LIFO ni benchmarks.
+      </div>
+
+      {report.holdingRows.length === 0 ? (
+        <EmptyMessage text="Aun no hay posiciones de inversion para analizar. Crea posiciones en /inversiones para ver este reporte." />
+      ) : (
+        <>
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard label="Valor por moneda" value={<MoneyTotals totals={report.totalsByCurrency} />} strong />
+            <SummaryCard label="Posiciones" value={report.holdingRows.length.toString()} />
+            <SummaryCard label="Activos en top" value={report.concentrationByAsset.length.toString()} />
+            <SummaryCard label="Precios con atencion" value={(report.priceStatus.withoutUpdate.length + report.priceStatus.withError.length + report.priceStatus.stale.length).toString()} />
+          </div>
+
+          <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+            <InvestmentDistributionCard
+              title="Distribucion por grupo"
+              description="Crypto, Acciones / ETFs y Otros se muestran por moneda."
+              rows={distributionRows}
+              emptyText="No hay valor de inversiones por grupo."
+            />
+            <InvestmentDistributionCard
+              title="Distribucion por plataforma"
+              description="Valor estimado por broker, exchange, wallet u otra plataforma."
+              rows={platformRows}
+              emptyText="No hay plataformas con posiciones."
+            />
+          </div>
+
+          <InvestmentConcentrationTable rows={report.concentrationByAsset} />
+
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <InvestmentPriceStatusCard dateFormat={dateFormat} priceStatus={report.priceStatus} />
+            <InvestmentApproximateGainCard report={report} />
+          </div>
+
+          <InvestmentRecentTransactionsCard dateFormat={dateFormat} report={report} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function InvestmentDistributionCard({
+  description,
+  emptyText,
+  rows,
+  title,
+}: {
+  description: string;
+  emptyText: string;
+  rows: Array<{ id: string; label: string; detail: string; currency: string; value: number }>;
+  title: string;
+}) {
+  const max = Math.max(...rows.map((row) => row.value), 1);
+
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <h3 className="font-semibold text-slate-950">{title}</h3>
+      <p className="mt-1 text-sm text-slate-600">{description}</p>
+      <div className="mt-4 space-y-4">
+        {rows.map((row) => (
+          <div className="min-w-0" key={row.id}>
+            <div className="flex min-w-0 flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-slate-800">{row.label}</p>
+                <p className="text-xs text-slate-500">{row.detail}</p>
+              </div>
+              <p className="break-words font-semibold text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></p>
+            </div>
+            <div className="mt-2 h-2 w-full rounded-full bg-white">
+              <div className="h-2 rounded-full bg-teal-600" style={{ width: `${Math.max((row.value / max) * 100, 2)}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 ? <EmptyMessage text={emptyText} /> : null}
+    </div>
+  );
+}
+
+function InvestmentConcentrationTable({ rows }: { rows: InvestmentReport["concentrationByAsset"] }) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <h3 className="font-semibold text-slate-950">Top posiciones / concentracion</h3>
+      <p className="mt-1 text-sm text-slate-600">El porcentaje se calcula solo dentro de la misma moneda para no mezclar MXN, USD, EUR u otras monedas.</p>
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-4 font-medium">Activo</th>
+              <th className="py-2 pr-4 font-medium">Tipo</th>
+              <th className="py-2 pr-4 font-medium">Moneda</th>
+              <th className="py-2 pr-4 text-right font-medium">Valor estimado</th>
+              <th className="py-2 text-right font-medium">Concentracion</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr className="border-b border-slate-100" key={`${row.assetId}-${row.currency}`}>
+                <td className="py-3 pr-4 text-slate-700">
+                  <p className="font-semibold text-slate-950">{row.symbol}</p>
+                  <p className="text-xs text-slate-500">{row.name}</p>
+                </td>
+                <td className="py-3 pr-4"><InvestmentAssetTypeBadge assetType={row.assetType} /></td>
+                <td className="py-3 pr-4 text-slate-700">{row.currency}</td>
+                <td className="py-3 pr-4 text-right font-semibold text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></td>
+                <td className="py-3 text-right text-slate-700">{formatPercentValue(row.percent)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 ? <EmptyMessage text="No hay posiciones suficientes para calcular concentracion." /> : null}
+    </div>
+  );
+}
+
+function InvestmentPriceStatusCard({ dateFormat, priceStatus }: { dateFormat: string; priceStatus: InvestmentReport["priceStatus"] }) {
+  const attentionAssets = [
+    ...priceStatus.withError.map((asset) => ({ asset, label: "Error reciente", tone: "text-red-700" })),
+    ...priceStatus.withoutUpdate.map((asset) => ({ asset, label: "Sin actualizacion", tone: "text-amber-700" })),
+    ...priceStatus.stale.map((asset) => ({ asset, label: `Mas de ${INVESTMENT_STALE_PRICE_DAYS} dias`, tone: "text-blue-700" })),
+  ].slice(0, 8);
+
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <h3 className="font-semibold text-slate-950">Estado de precios</h3>
+      <p className="mt-1 text-sm text-slate-600">Revision rapida de fuentes manuales y automaticas. Si falla un proveedor, Medra conserva el ultimo precio conocido.</p>
+      <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2">
+        <PriceMetric label="Manual" value={priceStatus.manualCount} />
+        <PriceMetric label="CoinGecko" value={priceStatus.coingeckoCount} />
+        <PriceMetric label="Alpha Vantage" value={priceStatus.alphaVantageCount} />
+        <PriceMetric label="Otros automaticos" value={priceStatus.otherAutomaticCount} />
+      </div>
+      <div className="mt-4 space-y-2">
+        {attentionAssets.map(({ asset, label, tone }) => (
+          <div className="min-w-0 rounded-md bg-white p-3 text-sm" key={`${asset.id}-${label}`}>
+            <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-950">{asset.symbol} - {asset.name}</p>
+                <p className="text-xs text-slate-500">
+                  {getInvestmentPriceSourceLabel(asset)}
+                  {asset.last_price_updated_at ? ` - ${formatDate(asset.last_price_updated_at, dateFormat)}` : ""}
+                </p>
+              </div>
+              <p className={`text-xs font-semibold ${tone}`}>{label}</p>
+            </div>
+            {asset.last_price_error ? <p className="mt-2 text-xs text-red-700">{asset.last_price_error}</p> : null}
+          </div>
+        ))}
+      </div>
+      {attentionAssets.length === 0 ? <EmptyMessage text="No hay precios automaticos con errores, sin actualizacion o posiblemente viejos." /> : null}
+    </div>
+  );
+}
+
+function InvestmentApproximateGainCard({ report }: { report: InvestmentReport }) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <h3 className="font-semibold text-slate-950">Ganancia no realizada aproximada</h3>
+      <p className="mt-1 text-sm text-slate-600">Solo se calcula para posiciones con costo promedio registrado. Es una estimacion actual, no rendimiento historico real.</p>
+
+      {report.approximateGainTotals.length > 0 ? (
+        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2">
+          {report.approximateGainTotals.map((row) => (
+            <div className="min-w-0 rounded-md bg-white p-3" key={row.currency}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{row.currency}</p>
+              <p className={`mt-1 text-lg font-bold ${row.gain >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                <MoneyAmount amount={row.gain} currency={row.currency} />
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Valor: <MoneyAmount amount={row.value} currency={row.currency} /> · Costo: <MoneyAmount amount={row.cost} currency={row.currency} />
+                {row.percent === null ? "" : ` · ${formatPercentChange(row.percent)}`}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-4 font-medium">Activo</th>
+              <th className="py-2 pr-4 font-medium">Plataforma</th>
+              <th className="py-2 pr-4 text-right font-medium">Valor</th>
+              <th className="py-2 pr-4 text-right font-medium">Costo aprox.</th>
+              <th className="py-2 text-right font-medium">Ganancia aprox.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.approximateGainRows.slice(0, 8).map((row) => (
+              <tr className="border-b border-slate-100" key={row.holding.id}>
+                <td className="py-3 pr-4 text-slate-700">
+                  <p className="font-semibold text-slate-950">{row.asset.symbol}</p>
+                  <p className="text-xs text-slate-500">{assetTypeLabels[row.asset.asset_type]} · {row.currency}</p>
+                </td>
+                <td className="py-3 pr-4 text-slate-700">{row.platform?.name ?? "Plataforma no encontrada"}</td>
+                <td className="py-3 pr-4 text-right font-semibold text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></td>
+                <td className="py-3 pr-4 text-right text-slate-700"><MoneyAmount amount={row.cost ?? 0} currency={row.currency} /></td>
+                <td className={`py-3 text-right font-semibold ${(row.unrealizedGain ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                  <MoneyAmount amount={row.unrealizedGain ?? 0} currency={row.currency} />
+                  {row.unrealizedPercent === null ? null : <span className="ml-1 text-xs">({formatPercentChange(row.unrealizedPercent)})</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {report.approximateGainRows.length === 0 ? <EmptyMessage text="No hay posiciones con costo promedio para calcular ganancia aproximada." /> : null}
+    </div>
+  );
+}
+
+function InvestmentRecentTransactionsCard({ dateFormat, report }: { dateFormat: string; report: InvestmentReport }) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-slate-950">Operaciones recientes</h3>
+          <p className="mt-1 text-sm text-slate-600">Registro operativo. Por ahora no calcula FIFO/LIFO, ganancias realizadas ni rendimiento anualizado.</p>
+        </div>
+        <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{report.recentTransactions.length} recientes</span>
+      </div>
+
+      {report.transactionTotals.length > 0 ? (
+        <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+          {report.transactionTotals.map((row) => (
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700" key={`${row.transactionType}-${row.currency}`}>
+              {investmentTransactionTypeLabels[row.transactionType]} · {row.count} · <MoneyAmount amount={row.amount} currency={row.currency} compact />
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <table className="w-full min-w-[780px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-slate-500">
+              <th className="py-2 pr-4 font-medium">Fecha</th>
+              <th className="py-2 pr-4 font-medium">Operacion</th>
+              <th className="py-2 pr-4 font-medium">Activo</th>
+              <th className="py-2 pr-4 font-medium">Plataforma</th>
+              <th className="py-2 pr-4 text-right font-medium">Cantidad</th>
+              <th className="py-2 text-right font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.recentTransactions.map(({ asset, currency, platform, transaction }) => (
+              <tr className="border-b border-slate-100" key={transaction.id}>
+                <td className="py-3 pr-4 text-slate-700">{formatDate(transaction.transaction_date, dateFormat)}</td>
+                <td className="py-3 pr-4 text-slate-700">{investmentTransactionTypeLabels[transaction.transaction_type]}</td>
+                <td className="py-3 pr-4 text-slate-700">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
+                <td className="py-3 pr-4 text-slate-700">{platform?.name ?? "Plataforma no encontrada"}</td>
+                <td className="py-3 pr-4 text-right text-slate-700">{formatQuantity(Number(transaction.quantity))}</td>
+                <td className="py-3 text-right font-semibold text-slate-950"><MoneyAmount amount={Number(transaction.total_amount)} currency={currency} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {report.recentTransactions.length === 0 ? <EmptyMessage text="No hay operaciones de inversion registradas todavia." /> : null}
+    </div>
+  );
+}
+
+function PriceMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="min-w-0 rounded-md bg-white p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-xl font-bold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function InvestmentAssetTypeBadge({ assetType }: { assetType: InvestmentAssetType }) {
+  const styles: Record<InvestmentGroupKey, string> = {
+    crypto: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    stock_etf: "border-blue-200 bg-blue-50 text-blue-700",
+    other: "border-slate-200 bg-white text-slate-700",
+  };
+  const group = getInvestmentGroupForAsset({ asset_type: assetType });
+
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${styles[group]}`}>
+      {assetTypeLabels[assetType]}
+    </span>
   );
 }
 
@@ -1724,6 +2338,17 @@ function formatPercentChange(value: number) {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+function formatPercentValue(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function formatQuantity(value: number) {
+  return Number(value).toLocaleString("es-MX", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  });
+}
+
 function formatExchangeRateValue(value: number) {
   return Number(value).toLocaleString("es-MX", {
     minimumFractionDigits: 2,
@@ -1751,6 +2376,30 @@ function formatMissingRateList(missingRates: string[]) {
       return fromCurrency && toCurrency ? `${fromCurrency} hacia ${toCurrency}` : rate;
     })
     .join(", ");
+}
+
+function getInvestmentGroupForAsset(asset: Pick<InvestmentAsset, "asset_type"> | undefined): InvestmentGroupKey {
+  if (asset?.asset_type === "crypto") return "crypto";
+  if (asset?.asset_type === "stock" || asset?.asset_type === "etf") return "stock_etf";
+  return "other";
+}
+
+function getInvestmentPriceSourceLabel(asset: InvestmentAsset) {
+  if (asset.asset_type === "crypto" && (asset.price_provider === "coingecko" || asset.price_source === "coingecko")) return "CoinGecko";
+  if ((asset.asset_type === "stock" || asset.asset_type === "etf") && asset.price_provider === "alpha_vantage") return "Alpha Vantage";
+  if (asset.price_provider && asset.price_provider !== "manual") return investmentPriceSourceLabels[asset.price_provider];
+  return "Manual";
+}
+
+function isInvestmentAutomaticPriceAsset(asset: InvestmentAsset) {
+  return getInvestmentPriceSourceLabel(asset) !== "Manual";
+}
+
+function getDaysBetweenDates(start: Date, end: Date) {
+  const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return Math.floor((endDate.getTime() - startDate.getTime()) / 86400000);
 }
 
 function getFriendlySnapshotError(error: string) {
