@@ -669,8 +669,8 @@ function buildInvestmentReport(
     if (!asset) return [];
 
     const quantity = getFiniteNumber(holding.quantity) ?? 0;
-    const averageCost = getFiniteNumber(holding.average_cost);
-    const currentPriceValue = getFiniteNumber(asset.current_price);
+    const averageCost = getOptionalFiniteNumber(holding.average_cost);
+    const currentPriceValue = getOptionalFiniteNumber(asset.current_price);
     const currentPrice = currentPriceValue ?? 0;
     const hasPositiveQuantity = quantity > 0;
     const hasValidAverageCost = averageCost !== null && averageCost > 0;
@@ -1601,11 +1601,8 @@ function InvestmentReportsLite({ report, dateFormat }: { report: InvestmentRepor
 
           <InvestmentConcentrationTable rows={report.concentrationByAsset} />
 
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <InvestmentPriceStatusCard dateFormat={dateFormat} priceStatus={report.priceStatus} />
-            <InvestmentApproximateGainCard report={report} />
-          </div>
-
+          <InvestmentApproximateGainCard report={report} />
+          <InvestmentPriceStatusCard dateFormat={dateFormat} priceStatus={report.priceStatus} />
           <InvestmentRecentTransactionsCard dateFormat={dateFormat} report={report} />
         </>
       )}
@@ -1737,7 +1734,7 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
         Estimacion basada en posiciones actuales con costo promedio registrado. No incluye ventas realizadas, dividendos, impuestos ni historial por lote.
       </p>
       <p className="mt-1 text-xs text-slate-500">
-        El costo total aproximado se calcula como cantidad por costo promedio unitario. Si tu broker muestra cost basis total, divide ese monto entre la cantidad para obtener el costo unitario.
+        El costo total aproximado se calcula como cantidad x costo promedio unitario registrado en la posicion. Si tu broker muestra cost basis total, divide ese monto entre la cantidad para obtener el costo unitario.
       </p>
 
       <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
@@ -1759,45 +1756,56 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
               <p className={`mt-1 text-lg font-bold ${row.gain >= 0 ? "text-emerald-700" : "text-red-700"}`}>
                 <MoneyAmount amount={row.gain} currency={row.currency} />
               </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Valor: <MoneyAmount amount={row.value} currency={row.currency} /> · Costo: <MoneyAmount amount={row.cost} currency={row.currency} />
-                {row.percent === null ? "" : ` · ${formatPercentChange(row.percent)}`}
-              </p>
+              <div className="mt-2 grid min-w-0 gap-1 text-xs text-slate-600 sm:grid-cols-2">
+                <p>Valor actual total: <MoneyAmount amount={row.value} currency={row.currency} /></p>
+                <p>Costo total aprox.: <MoneyAmount amount={row.cost} currency={row.currency} /></p>
+                <p>Ganancia/perdida aprox.: <MoneyAmount amount={row.gain} currency={row.currency} /></p>
+                <p>% aprox.: {row.percent === null ? "Sin datos" : formatPercentChange(row.percent)}</p>
+              </div>
             </div>
           ))}
         </div>
       ) : null}
 
       {report.approximateGainRows.length > 0 ? (
-        <div className="mt-4 max-w-full overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-slate-500">
-              <th className="py-2 pr-4 font-medium">Activo</th>
-              <th className="py-2 pr-4 font-medium">Plataforma</th>
-              <th className="py-2 pr-4 text-right font-medium">Valor actual total</th>
-              <th className="py-2 pr-4 text-right font-medium">Costo total aprox.</th>
-              <th className="py-2 text-right font-medium">Ganancia/perdida aprox.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.approximateGainRows.slice(0, 8).map((row) => (
-              <tr className="border-b border-slate-100" key={row.holding.id}>
-                <td className="py-3 pr-4 text-slate-700">
-                  <p className="font-semibold text-slate-950">{row.asset.symbol}</p>
-                  <p className="text-xs text-slate-500">{assetTypeLabels[row.asset.asset_type]} · {row.currency}</p>
-                </td>
-                <td className="py-3 pr-4 text-slate-700">{row.platform?.name ?? "Plataforma no encontrada"}</td>
-                <td className="py-3 pr-4 text-right font-semibold text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></td>
-                <td className="py-3 pr-4 text-right text-slate-700"><MoneyAmount amount={row.cost ?? 0} currency={row.currency} /></td>
-                <td className={`py-3 text-right font-semibold ${(row.unrealizedGain ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                  <MoneyAmount amount={row.unrealizedGain ?? 0} currency={row.currency} />
-                  {row.unrealizedPercent === null ? null : <span className="ml-1 text-xs">({formatPercentChange(row.unrealizedPercent)})</span>}
-                </td>
+        <div className="mt-4 max-h-[520px] max-w-full overflow-auto">
+          <table className="w-full min-w-[1240px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-slate-500">
+                <th className="py-2 pr-4 font-medium">Activo</th>
+                <th className="py-2 pr-4 font-medium">Plataforma</th>
+                <th className="py-2 pr-4 text-right font-medium">Cantidad</th>
+                <th className="py-2 pr-4 text-right font-medium">Precio actual unitario</th>
+                <th className="py-2 pr-4 text-right font-medium">Costo promedio unitario</th>
+                <th className="py-2 pr-4 text-right font-medium">Valor actual total</th>
+                <th className="py-2 pr-4 text-right font-medium">Costo total aprox.</th>
+                <th className="py-2 pr-4 text-right font-medium">Ganancia/perdida aprox.</th>
+                <th className="py-2 text-right font-medium">% aprox.</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {report.approximateGainRows.map((row) => (
+                <tr className="border-b border-slate-100" key={row.holding.id}>
+                  <td className="py-3 pr-4 text-slate-700">
+                    <p className="font-semibold text-slate-950">{row.asset.symbol}</p>
+                    <p className="text-xs text-slate-500">{assetTypeLabels[row.asset.asset_type]} - {row.currency}</p>
+                  </td>
+                  <td className="py-3 pr-4 text-slate-700">{row.platform?.name ?? "Plataforma no encontrada"}</td>
+                  <td className="py-3 pr-4 text-right text-slate-700">{formatQuantity(row.quantity)}</td>
+                  <td className="py-3 pr-4 text-right text-slate-700"><MoneyAmount amount={row.currentPrice} currency={row.currency} /></td>
+                  <td className="py-3 pr-4 text-right text-slate-700"><MoneyAmount amount={row.averageCost ?? 0} currency={row.currency} /></td>
+                  <td className="py-3 pr-4 text-right font-semibold text-slate-950"><MoneyAmount amount={row.value} currency={row.currency} /></td>
+                  <td className="py-3 pr-4 text-right text-slate-700"><MoneyAmount amount={row.cost ?? 0} currency={row.currency} /></td>
+                  <td className={`py-3 pr-4 text-right font-semibold ${(row.unrealizedGain ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                    <MoneyAmount amount={row.unrealizedGain ?? 0} currency={row.currency} />
+                  </td>
+                  <td className={`py-3 text-right text-sm font-semibold ${(row.unrealizedPercent ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                    {row.unrealizedPercent === null ? "Sin datos" : formatPercentChange(row.unrealizedPercent)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : null}
       {report.approximateGainRows.length === 0 ? <EmptyMessage text="Agrega costo promedio en tus posiciones para ver ganancia/perdida aproximada." /> : null}
@@ -2397,6 +2405,11 @@ function formatQuantity(value: number) {
 function getFiniteNumber(value: unknown) {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getOptionalFiniteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  return getFiniteNumber(value);
 }
 
 function formatExchangeRateValue(value: number) {
