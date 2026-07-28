@@ -1217,6 +1217,18 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
   onChange: (form: typeof emptyHoldingForm) => void;
   onCancel: () => void;
 }) {
+  const [totalCostBasis, setTotalCostBasis] = useState("");
+  const quantity = Number(form.quantity);
+  const totalCostBasisAmount = Number(totalCostBasis);
+  const suggestedAverageCost =
+    Number.isFinite(quantity) && quantity > 0 && Number.isFinite(totalCostBasisAmount) && totalCostBasisAmount > 0
+      ? totalCostBasisAmount / quantity
+      : null;
+
+  useEffect(() => {
+    setTotalCostBasis("");
+  }, [editingId]);
+
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar posicion" : "Nueva posicion"}</h2>
@@ -1232,7 +1244,40 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
           </p>
         ) : null}
         <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
-        <TextInput label="Precio promedio opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
+        <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+          <p className="font-semibold">Costo promedio unitario</p>
+          <p className="mt-1">Este campo es costo por unidad, no monto total invertido.</p>
+          <p className="mt-1">Ejemplo: si tu broker muestra cost basis total de $50 y tienes 0.184 acciones, captura 50 / 0.184 = 271.74.</p>
+        </div>
+        <TextInput label="Costo promedio unitario opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+          <TextInput
+            label="Monto total invertido / cost basis"
+            min="0"
+            required={false}
+            step="0.00000001"
+            type="number"
+            value={totalCostBasis}
+            onChange={setTotalCostBasis}
+          />
+          <p className="mt-2 text-xs text-slate-600">Campo auxiliar: no se guarda en la base de datos. Solo sirve para calcular el costo promedio unitario.</p>
+          {suggestedAverageCost !== null ? (
+            <div className="mt-3 rounded-md bg-white p-3 text-sm text-slate-700">
+              <p>
+                Costo promedio unitario sugerido: <span className="font-semibold text-slate-950">{formatDecimal(suggestedAverageCost)}</span>
+              </p>
+              <button
+                className="mt-2 rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
+                onClick={() => onChange({ ...form, average_cost: formatDecimal(suggestedAverageCost) })}
+                type="button"
+              >
+                Usar este costo unitario
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500">Escribe cantidad y monto total invertido para ver una sugerencia.</p>
+          )}
+        </div>
         <TextInput label="Notas opcionales" required={false} value={form.notes} onChange={(value) => onChange({ ...form, notes: value })} />
       </div>
       <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar posicion" : "Crear posicion"} onCancel={onCancel} />
@@ -1329,14 +1374,14 @@ function HoldingsTable({
             <SortableHeader label="Activo / simbolo" sortKey="asset" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
             <SortableHeader label="Tipo" sortKey="asset_type" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
             <SortableHeader label="Cantidad" sortKey="quantity" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
-            <TableHeader label="Precio promedio" />
+            <TableHeader label="Costo prom. unitario" />
             <SortableHeader label="Precio actual" sortKey="current_price" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
             <TableHeader label="Fuente" />
             <SortableHeader label="Moneda" sortKey="currency" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
             <TableHeader label="Ultima actualizacion" />
             <TableHeader label="Error reciente" />
             <TableHeader label="Notas" />
-            <SortableHeader label="Valor estimado" sortKey="value" sort={sort} align="right" onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Valor actual total" sortKey="value" sort={sort} align="right" onSort={(key) => setSort((current) => toggleSort(current, key))} />
             <TableHeader label="Acciones" align="right" />
           </tr>
         </thead>
@@ -1724,7 +1769,7 @@ function validateHolding(form: typeof emptyHoldingForm, holdings: Holding[], edi
     return "Ya existe una posicion para esta plataforma y activo. Edita esa posicion en lugar de crear otra duplicada.";
   }
   if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
-  if (form.average_cost !== "" && (!Number.isFinite(Number(form.average_cost)) || Number(form.average_cost) < 0)) return "El precio promedio no puede ser negativo.";
+  if (form.average_cost !== "" && (!Number.isFinite(Number(form.average_cost)) || Number(form.average_cost) < 0)) return "El costo promedio unitario no puede ser negativo.";
   return "";
 }
 
@@ -1806,6 +1851,10 @@ function calculateTransactionTotal(quantity: string, price: string) {
   const priceNumber = Number(price);
   if (!Number.isFinite(quantityNumber) || !Number.isFinite(priceNumber)) return "0";
   return String(Number((quantityNumber * priceNumber).toFixed(8)));
+}
+
+function formatDecimal(value: number) {
+  return String(Number(value.toFixed(8)));
 }
 
 function getFriendlyInvestmentError(error: string) {

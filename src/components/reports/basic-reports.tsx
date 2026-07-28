@@ -1736,6 +1736,9 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
       <p className="mt-1 text-sm text-slate-600">
         Estimacion basada en posiciones actuales con costo promedio registrado. No incluye ventas realizadas, dividendos, impuestos ni historial por lote.
       </p>
+      <p className="mt-1 text-xs text-slate-500">
+        El costo total aproximado se calcula como cantidad por costo promedio unitario. Si tu broker muestra cost basis total, divide ese monto entre la cantidad para obtener el costo unitario.
+      </p>
 
       <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
         <PriceMetric label="Posiciones incluidas" value={report.approximateGainRows.length} />
@@ -1772,9 +1775,9 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
             <tr className="border-b border-slate-200 text-slate-500">
               <th className="py-2 pr-4 font-medium">Activo</th>
               <th className="py-2 pr-4 font-medium">Plataforma</th>
-              <th className="py-2 pr-4 text-right font-medium">Valor</th>
-              <th className="py-2 pr-4 text-right font-medium">Costo aprox.</th>
-              <th className="py-2 text-right font-medium">Ganancia/perdida</th>
+              <th className="py-2 pr-4 text-right font-medium">Valor actual total</th>
+              <th className="py-2 pr-4 text-right font-medium">Costo total aprox.</th>
+              <th className="py-2 text-right font-medium">Ganancia/perdida aprox.</th>
             </tr>
           </thead>
           <tbody>
