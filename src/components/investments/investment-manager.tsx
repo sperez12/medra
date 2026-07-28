@@ -126,6 +126,16 @@ type HoldingSummary = {
 type InvestmentSection = "summary" | "positions" | "assets" | "operations" | "platforms";
 type InvestmentFormKey = "platform" | "asset" | "holding" | "transaction" | null;
 type InvestmentGroupKey = "crypto" | "stock_etf" | "other";
+type SortDirection = "asc" | "desc";
+type SortConfig<TKey extends string> = {
+  key: TKey;
+  direction: SortDirection;
+};
+type SortValue = boolean | number | string | null | undefined;
+type HoldingSortKey = "asset" | "platform" | "asset_type" | "quantity" | "current_price" | "value" | "currency";
+type AssetSortKey = "symbol" | "name" | "asset_type" | "current_price" | "price_source" | "price_status" | "last_price_updated_at" | "last_price_error" | "is_active";
+type TransactionSortKey = "transaction_date" | "asset" | "platform" | "transaction_type" | "quantity" | "price" | "total_amount";
+type PlatformSortKey = "name" | "platform_type" | "currency" | "is_active";
 
 export function InvestmentManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -680,26 +690,32 @@ export function InvestmentManager() {
       <InvestmentSectionTabs activeSection={activeSection} onChange={setActiveSection} />
 
       {activeSection === "summary" ? (
-        <section className="grid min-w-0 gap-6 xl:grid-cols-3">
-          <SimpleList title="Datos operativos">
-            <ListRow title="Posiciones" detail="Total registradas" value={String(holdings.length)} />
-            <ListRow title="Activos registrados" detail="Instrumentos unicos" value={String(assets.length)} />
-            <ListRow title="Precios automaticos" detail="CoinGecko o Alpha Vantage" value={String(automaticPriceAssetCount)} />
-            <ListRow title="Manual o pendiente" detail="Manual, sin actualizar o con error" value={String(manualOrPendingAssetCount)} />
-            <ListRow title="Plataformas activas" detail="Brokers, exchanges o wallets" value={String(platforms.filter((item) => item.is_active).length)} />
-          </SimpleList>
-          <SimpleList title="Valor por plataforma">
-            {valueByPlatform.map((item) => (
-              <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
-            ))}
-            {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea posiciones para ver este resumen." /> : null}
-          </SimpleList>
-          <SimpleList title="Valor por tipo de activo">
-            {valueByAssetType.map((item) => (
-              <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
-            ))}
-            {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
-          </SimpleList>
+        <section className="space-y-4">
+          <SectionHeader
+            title="Resumen"
+            helpText="Aqui quedan las metricas secundarias y los cortes por plataforma o tipo de activo. El resumen principal se mantiene enfocado en valor por grupo."
+          />
+          <div className="grid min-w-0 gap-6 xl:grid-cols-3">
+            <SimpleList title="Datos operativos">
+              <ListRow title="Posiciones" detail="Total registradas" value={String(holdings.length)} />
+              <ListRow title="Activos registrados" detail="Instrumentos unicos" value={String(assets.length)} />
+              <ListRow title="Precios automaticos" detail="CoinGecko o Alpha Vantage" value={String(automaticPriceAssetCount)} />
+              <ListRow title="Manual o pendiente" detail="Manual, sin actualizar o con error" value={String(manualOrPendingAssetCount)} />
+              <ListRow title="Plataformas activas" detail="Brokers, exchanges o wallets" value={String(platforms.filter((item) => item.is_active).length)} />
+            </SimpleList>
+            <SimpleList title="Valor por plataforma">
+              {valueByPlatform.map((item) => (
+                <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
+              ))}
+              {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea posiciones para ver este resumen." /> : null}
+            </SimpleList>
+            <SimpleList title="Valor por tipo de activo">
+              {valueByAssetType.map((item) => (
+                <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
+              ))}
+              {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
+            </SimpleList>
+          </div>
         </section>
       ) : null}
 
@@ -832,19 +848,11 @@ export function InvestmentManager() {
             title="Plataformas / brokers"
             helpText="La plataforma indica donde tienes la inversion: broker, exchange, wallet o banco. Una misma accion, ETF o crypto puede existir como posicion en distintas plataformas."
           />
-          <SimpleList title="Plataformas / brokers" helpText="Las plataformas inactivas se conservan para historial.">
-            {platforms.map((platform) => (
-              <ListRow
-                key={platform.id}
-                title={platform.name}
-                detail={`${platformTypeLabels[platform.platform_type]} - ${platform.currency}${platform.country ? ` - ${platform.country}` : ""}`}
-                value={platform.is_active ? "Activa" : "Inactiva"}
-                onEdit={() => startEditPlatform(platform)}
-                onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`, "Plataforma borrada correctamente.")}
-              />
-            ))}
-            {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
-          </SimpleList>
+          <PlatformsTable
+            platforms={platforms}
+            onEdit={(platform) => startEditPlatform(platform)}
+            onDelete={(platform) => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`, "Plataforma borrada correctamente.")}
+          />
         </section>
       ) : null}
     </div>
@@ -1002,9 +1010,11 @@ function InvestmentSectionTabs({
 
 function SectionHeader({ title, helpText }: { title: string; helpText: string }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-      <HelpTooltip text={helpText} />
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        <HelpTooltip text={helpText} />
+      </div>
     </div>
   );
 }
@@ -1298,12 +1308,40 @@ function HoldingsTable({
   onEdit: (holding: Holding) => void;
   onDelete: (holding: Holding) => void;
 }) {
+  const [sort, setSort] = useState<SortConfig<HoldingSortKey>>({ key: "value", direction: "desc" });
+  const sortedRows = sortRows(rows, sort, (row, key) => {
+    if (key === "asset") return row.asset ? `${row.asset.symbol} ${row.asset.name}` : null;
+    if (key === "platform") return row.platform?.name;
+    if (key === "asset_type") return row.asset ? assetTypeLabels[row.asset.asset_type] : null;
+    if (key === "quantity") return Number(row.holding.quantity);
+    if (key === "current_price") return row.asset ? Number(row.asset.current_price) : null;
+    if (key === "value") return row.value;
+    if (key === "currency") return row.asset?.currency;
+    return null;
+  });
+
   return (
     <TableCard title={title} description={description} helpText={helpText}>
       <table className="w-full min-w-[1180px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo / instrumento</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <SortableHeader label="Plataforma" sortKey="platform" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Activo / simbolo" sortKey="asset" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Tipo" sortKey="asset_type" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Cantidad" sortKey="quantity" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Precio promedio" />
+            <SortableHeader label="Precio actual" sortKey="current_price" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Fuente" />
+            <SortableHeader label="Moneda" sortKey="currency" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Ultima actualizacion" />
+            <TableHeader label="Error reciente" />
+            <TableHeader label="Notas" />
+            <SortableHeader label="Valor estimado" sortKey="value" sort={sort} align="right" onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Acciones" align="right" />
+          </tr>
+        </thead>
         <tbody>
-          {rows.map(({ holding, platform, asset, value }) => (
+          {sortedRows.map(({ holding, platform, asset, value }) => (
             <tr className="border-b border-slate-100" key={holding.id}>
               <td className="py-3 pr-4">{platform?.name ?? "Plataforma no encontrada"}</td>
               <td className="py-3 pr-4">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
@@ -1312,6 +1350,7 @@ function HoldingsTable({
               <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : <MoneyAmount amount={Number(holding.average_cost)} currency={asset?.currency} />}</td>
               <td className="py-3 pr-4"><MoneyAmount amount={Number(asset?.current_price ?? 0)} currency={asset?.currency} /></td>
               <td className="py-3 pr-4"><PriceSourceBadge asset={asset} /></td>
+              <td className="py-3 pr-4">{asset?.currency ?? "Sin moneda"}</td>
               <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at, dateFormat) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset?.last_price_error} /></td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
@@ -1351,12 +1390,40 @@ function AssetsTable({
   onDelete: (asset: InvestmentAsset) => void;
   onUpdate: (asset: InvestmentAsset) => void;
 }) {
+  const [sort, setSort] = useState<SortConfig<AssetSortKey>>({ key: "symbol", direction: "asc" });
+  const sortedAssets = sortRows(assets, sort, (asset, key) => {
+    if (key === "symbol") return asset.symbol;
+    if (key === "name") return asset.name;
+    if (key === "asset_type") return assetTypeLabels[asset.asset_type];
+    if (key === "current_price") return Number(asset.current_price);
+    if (key === "price_source") return getPriceSourceLabel(asset);
+    if (key === "price_status") return getPriceStatusLabel(asset);
+    if (key === "last_price_updated_at") return getTimeValue(asset.last_price_updated_at);
+    if (key === "last_price_error") return asset.last_price_error;
+    if (key === "is_active") return asset.is_active;
+    return null;
+  });
+
   return (
     <TableCard title={title} description={description} helpText={helpText}>
       <table className="w-full min-w-[1120px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo / ticker</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Estado precio</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Actualizar precio</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <SortableHeader label="Simbolo / ticker" sortKey="symbol" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Nombre" sortKey="name" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Tipo" sortKey="asset_type" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Precio actual" sortKey="current_price" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Fuente" sortKey="price_source" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Estado precio" sortKey="price_status" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Ultima actualizacion" sortKey="last_price_updated_at" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Error reciente" sortKey="last_price_error" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Activo" sortKey="is_active" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Actualizar precio" />
+            <TableHeader label="Acciones" align="right" />
+          </tr>
+        </thead>
         <tbody>
-          {assets.map((asset) => (
+          {sortedAssets.map((asset) => (
             <tr className="border-b border-slate-100" key={asset.id}>
               <td className="py-3 pr-4 font-semibold">{asset.symbol}</td>
               <td className="py-3 pr-4">{asset.name}</td>
@@ -1399,12 +1466,38 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
   onEdit: (transaction: InvestmentTransaction) => void;
   onDelete: (transaction: InvestmentTransaction) => void;
 }) {
+  const [sort, setSort] = useState<SortConfig<TransactionSortKey>>({ key: "transaction_date", direction: "desc" });
+  const sortedTransactions = sortRows(transactions, sort, (transaction, key) => {
+    const asset = assets.find((item) => item.id === transaction.asset_id);
+    const platform = platforms.find((item) => item.id === transaction.platform_id);
+    if (key === "transaction_date") return getTimeValue(transaction.transaction_date);
+    if (key === "asset") return asset ? `${asset.symbol} ${asset.name}` : null;
+    if (key === "platform") return platform?.name;
+    if (key === "transaction_type") return transactionTypeLabels[transaction.transaction_type];
+    if (key === "quantity") return Number(transaction.quantity);
+    if (key === "price") return Number(transaction.price);
+    if (key === "total_amount") return Number(transaction.total_amount);
+    return null;
+  });
+
   return (
     <TableCard title="Operaciones recientes" description="Estas operaciones son historial; no modifican automaticamente tus posiciones.">
-      <table className="w-full min-w-[860px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Fecha</th><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Grupo</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 text-right font-medium">Total</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+      <table className="w-full min-w-[980px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <SortableHeader label="Fecha" sortKey="transaction_date" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Plataforma" sortKey="platform" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Activo" sortKey="asset" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Grupo" />
+            <SortableHeader label="Tipo" sortKey="transaction_type" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Cantidad" sortKey="quantity" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Precio unitario" sortKey="price" sort={sort} align="right" onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Monto total" sortKey="total_amount" sort={sort} align="right" onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Acciones" align="right" />
+          </tr>
+        </thead>
         <tbody>
-          {transactions.map((transaction) => {
+          {sortedTransactions.map((transaction) => {
             const asset = assets.find((item) => item.id === transaction.asset_id);
             return (
               <tr className="border-b border-slate-100" key={transaction.id}>
@@ -1414,6 +1507,7 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
                 <td className="py-3 pr-4">{asset ? <AssetTypeBadge assetType={asset.asset_type} /> : "Sin grupo"}</td>
                 <td className="py-3 pr-4">{transactionTypeLabels[transaction.transaction_type]}</td>
                 <td className="py-3 pr-4">{Number(transaction.quantity).toLocaleString("es-MX")}</td>
+                <td className="py-3 text-right font-medium"><MoneyAmount amount={Number(transaction.price)} currency={asset?.currency} /></td>
                 <td className="py-3 text-right font-semibold"><MoneyAmount amount={Number(transaction.total_amount)} currency={asset?.currency} /></td>
                 <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(transaction)} onDelete={() => onDelete(transaction)} /></td>
               </tr>
@@ -1422,6 +1516,55 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
         </tbody>
       </table>
       {transactions.length === 0 ? <EmptyMessage text="Aun no hay operaciones registradas para este filtro." /> : null}
+    </TableCard>
+  );
+}
+
+function PlatformsTable({
+  platforms,
+  onEdit,
+  onDelete,
+}: {
+  platforms: InvestmentPlatform[];
+  onEdit: (platform: InvestmentPlatform) => void;
+  onDelete: (platform: InvestmentPlatform) => void;
+}) {
+  const [sort, setSort] = useState<SortConfig<PlatformSortKey>>({ key: "name", direction: "asc" });
+  const sortedPlatforms = sortRows(platforms, sort, (platform, key) => {
+    if (key === "name") return platform.name;
+    if (key === "platform_type") return platformTypeLabels[platform.platform_type];
+    if (key === "currency") return platform.currency;
+    if (key === "is_active") return platform.is_active;
+    return null;
+  });
+
+  return (
+    <TableCard title="Plataformas / brokers" helpText="Las plataformas inactivas se conservan para historial.">
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-slate-500">
+            <SortableHeader label="Nombre" sortKey="name" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Tipo" sortKey="platform_type" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <SortableHeader label="Moneda" sortKey="currency" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Pais" />
+            <SortableHeader label="Estado" sortKey="is_active" sort={sort} onSort={(key) => setSort((current) => toggleSort(current, key))} />
+            <TableHeader label="Acciones" align="right" />
+          </tr>
+        </thead>
+        <tbody>
+          {sortedPlatforms.map((platform) => (
+            <tr className="border-b border-slate-100" key={platform.id}>
+              <td className="py-3 pr-4 font-medium text-slate-950">{platform.name}</td>
+              <td className="py-3 pr-4">{platformTypeLabels[platform.platform_type]}</td>
+              <td className="py-3 pr-4">{platform.currency}</td>
+              <td className="py-3 pr-4">{platform.country || "Sin pais"}</td>
+              <td className="py-3 pr-4">{platform.is_active ? "Activa" : "Inactiva"}</td>
+              <td className="py-3 pl-4"><ActionButtons onEdit={() => onEdit(platform)} onDelete={() => onDelete(platform)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
     </TableCard>
   );
 }
@@ -1444,6 +1587,52 @@ function getInvestmentGroupForAsset(asset: Pick<InvestmentAsset, "asset_type"> |
 
 function getInvestmentGroupForTransaction(transaction: InvestmentTransaction, assets: InvestmentAsset[]): InvestmentGroupKey {
   return getInvestmentGroupForAsset(assets.find((asset) => asset.id === transaction.asset_id));
+}
+
+function sortRows<T, TKey extends string>(rows: T[], sort: SortConfig<TKey>, getValue: (row: T, key: TKey) => SortValue) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      const comparison = compareSortValues(getValue(left.row, sort.key), getValue(right.row, sort.key), sort.direction);
+      return comparison === 0 ? left.index - right.index : comparison;
+    })
+    .map((item) => item.row);
+}
+
+function toggleSort<TKey extends string>(current: SortConfig<TKey>, key: TKey): SortConfig<TKey> {
+  if (current.key !== key) return { key, direction: "asc" };
+  return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+}
+
+function compareSortValues(left: SortValue, right: SortValue, direction: SortDirection) {
+  const leftEmpty = isEmptySortValue(left);
+  const rightEmpty = isEmptySortValue(right);
+
+  if (leftEmpty && rightEmpty) return 0;
+  if (leftEmpty) return 1;
+  if (rightEmpty) return -1;
+
+  let comparison = 0;
+
+  if (typeof left === "number" && typeof right === "number") {
+    comparison = left - right;
+  } else if (typeof left === "boolean" && typeof right === "boolean") {
+    comparison = Number(left) - Number(right);
+  } else {
+    comparison = String(left).localeCompare(String(right), "es-MX", { numeric: true, sensitivity: "base" });
+  }
+
+  return direction === "asc" ? comparison : -comparison;
+}
+
+function isEmptySortValue(value: SortValue) {
+  return value === null || value === undefined || value === "";
+}
+
+function getTimeValue(dateValue: string | null | undefined) {
+  if (!dateValue) return null;
+  const time = new Date(dateValue).getTime();
+  return Number.isNaN(time) ? null : time;
 }
 
 function buildValueByAssetType(rows: HoldingSummary[]) {
@@ -1660,6 +1849,13 @@ function isAutomaticPriceAsset(asset: InvestmentAsset) {
   return false;
 }
 
+function getPriceStatusLabel(asset: InvestmentAsset) {
+  if (asset.last_price_error) return "Error reciente";
+  if (!isAutomaticPriceAsset(asset)) return "Manual";
+  if (!asset.last_price_updated_at) return "Sin actualizar";
+  return "Actualizado";
+}
+
 function PriceErrorText({ error }: { error: string | null | undefined }) {
   if (!error) return <span className="text-slate-500">Sin error</span>;
 
@@ -1698,10 +1894,9 @@ function PriceSourceBadge({ asset }: { asset: InvestmentAsset | undefined }) {
 }
 
 function PriceStatusText({ asset }: { asset: InvestmentAsset }) {
-  if (asset.last_price_error) return <span className="text-xs font-medium text-red-700">Error reciente</span>;
-  if (!isAutomaticPriceAsset(asset)) return <span className="text-xs text-slate-500">Manual</span>;
-  if (!asset.last_price_updated_at) return <span className="text-xs font-medium text-amber-700">Sin actualizar</span>;
-  return <span className="text-xs font-medium text-emerald-700">Actualizado</span>;
+  const label = getPriceStatusLabel(asset);
+  const color = label === "Error reciente" ? "text-red-700" : label === "Sin actualizar" ? "text-amber-700" : label === "Actualizado" ? "text-emerald-700" : "text-slate-500";
+  return <span className={`text-xs font-medium ${color}`}>{label}</span>;
 }
 
 function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentPlatform[]; value: string; onChange: (value: string) => void }) {
@@ -1785,6 +1980,47 @@ function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () 
       <button className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={onEdit} type="button">Editar</button>
       <button className="rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700" onClick={onDelete} type="button">Borrar</button>
     </div>
+  );
+}
+
+function TableHeader({ label, align = "left" }: { label: string; align?: "left" | "right" }) {
+  return (
+    <th className={`py-2 pr-4 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+      {label}
+    </th>
+  );
+}
+
+function SortableHeader<TKey extends string>({
+  label,
+  sortKey,
+  sort,
+  align = "left",
+  onSort,
+}: {
+  label: string;
+  sortKey: TKey;
+  sort: SortConfig<TKey>;
+  align?: "left" | "right";
+  onSort: (key: TKey) => void;
+}) {
+  const isActive = sort.key === sortKey;
+  const indicator = isActive ? (sort.direction === "asc" ? "↑" : "↓") : "↕";
+
+  return (
+    <th className={`py-2 pr-4 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+      <button
+        aria-label={`Ordenar por ${label}`}
+        className={`inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs font-medium transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-teal-200 ${
+          align === "right" ? "justify-end" : "justify-start"
+        } ${isActive ? "text-slate-950" : "text-slate-500"}`}
+        onClick={() => onSort(sortKey)}
+        type="button"
+      >
+        <span>{label}</span>
+        <span className="text-[11px] text-slate-400">{indicator}</span>
+      </button>
+    </th>
   );
 }
 
