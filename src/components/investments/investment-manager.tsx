@@ -123,6 +123,10 @@ type HoldingSummary = {
   value: number;
 };
 
+type InvestmentSection = "summary" | "positions" | "assets" | "operations" | "platforms";
+type InvestmentFormKey = "platform" | "asset" | "holding" | "transaction" | null;
+type InvestmentGroupKey = "crypto" | "stock_etf" | "other";
+
 export function InvestmentManager() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { dateFormat, preferredCurrency, isLoaded: preferencesLoaded } = useUserPreferences();
@@ -143,6 +147,9 @@ export function InvestmentManager() {
   const [updatingPriceGroup, setUpdatingPriceGroup] = useState<"crypto" | "stock_etf" | null>(null);
   const [updatingAssetId, setUpdatingAssetId] = useState<string | null>(null);
   const [isSavingAsset, setIsSavingAsset] = useState(false);
+  const [activeSection, setActiveSection] = useState<InvestmentSection>("positions");
+  const [openForm, setOpenForm] = useState<InvestmentFormKey>(null);
+  const [operationFilter, setOperationFilter] = useState<InvestmentGroupKey | "all">("all");
 
   useEffect(() => {
     loadData();
@@ -230,7 +237,8 @@ export function InvestmentManager() {
 
     setPlatformForm(emptyPlatformForm);
     setEditingPlatformId(null);
-    setMessage({ type: "success", text: editingPlatformId ? "Plataforma actualizada. El resumen ya usa sus nuevos datos." : "Plataforma creada. Ahora puedes asociarle activos y holdings." });
+    setOpenForm(null);
+    setMessage({ type: "success", text: editingPlatformId ? "Plataforma actualizada. El resumen ya usa sus nuevos datos." : "Plataforma creada. Ahora puedes asociarle activos y posiciones." });
     await loadData();
   }
 
@@ -278,7 +286,8 @@ export function InvestmentManager() {
 
     setAssetForm(emptyAssetForm);
     setEditingAssetId(null);
-    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el precio configurado." : "Activo creado. Ahora puedes registrarlo en un holding." });
+    setOpenForm(null);
+    setMessage({ type: "success", text: editingAssetId ? "Activo actualizado. Los valores estimados ya usan el precio configurado." : "Activo creado. Ahora puedes registrarlo en una posicion." });
     setIsSavingAsset(false);
     await loadData();
   }
@@ -288,7 +297,7 @@ export function InvestmentManager() {
     setMessage(null);
     if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
     const userId = await getUserId();
-    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar holdings." });
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar posiciones." });
     const validation = validateHolding(holdingForm, holdings, editingHoldingId);
     if (validation) return setMessage({ type: "error", text: validation });
 
@@ -308,7 +317,8 @@ export function InvestmentManager() {
 
     setHoldingForm(emptyHoldingForm);
     setEditingHoldingId(null);
-    setMessage({ type: "success", text: editingHoldingId ? "Holding actualizado. El valor estimado fue recalculado." : "Holding creado. Ya aparece en el valor total por moneda." });
+    setOpenForm(null);
+    setMessage({ type: "success", text: editingHoldingId ? "Posicion actualizada. El valor estimado fue recalculado." : "Posicion creada. Ya aparece en el valor total por moneda." });
     await loadData();
   }
 
@@ -317,7 +327,7 @@ export function InvestmentManager() {
     setMessage(null);
     if (!supabase) return setMessage({ type: "error", text: "Falta conectar Supabase." });
     const userId = await getUserId();
-    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar transacciones." });
+    if (!userId) return setMessage({ type: "error", text: "Primero inicia sesion para guardar operaciones." });
     const validation = validateTransaction(transactionForm);
     if (validation) return setMessage({ type: "error", text: validation });
 
@@ -341,7 +351,8 @@ export function InvestmentManager() {
 
     setTransactionForm(emptyTransactionForm);
     setEditingTransactionId(null);
-    setMessage({ type: "success", text: editingTransactionId ? "Transaccion actualizada." : "Transaccion registrada. Recuerda que por ahora no cambia automaticamente la cantidad del holding." });
+    setOpenForm(null);
+    setMessage({ type: "success", text: editingTransactionId ? "Operacion actualizada." : "Operacion registrada. Recuerda que por ahora no cambia automaticamente la cantidad de la posicion." });
     await loadData();
   }
 
@@ -495,27 +506,84 @@ export function InvestmentManager() {
     await loadData();
   }
 
+  function resetEditingState() {
+    setEditingPlatformId(null);
+    setEditingAssetId(null);
+    setEditingHoldingId(null);
+    setEditingTransactionId(null);
+  }
+
+  function openCreateForm(formKey: Exclude<InvestmentFormKey, null>) {
+    resetEditingState();
+    setMessage(null);
+    setOpenForm(openForm === formKey ? null : formKey);
+
+    if (formKey === "platform") setPlatformForm({ ...emptyPlatformForm, currency: preferredCurrency });
+    if (formKey === "asset") setAssetForm({ ...emptyAssetForm, currency: preferredCurrency });
+    if (formKey === "holding") setHoldingForm(emptyHoldingForm);
+    if (formKey === "transaction") setTransactionForm(emptyTransactionForm);
+  }
+
+  function cancelPlatformForm() {
+    setEditingPlatformId(null);
+    setPlatformForm({ ...emptyPlatformForm, currency: preferredCurrency });
+    setOpenForm(null);
+  }
+
+  function cancelAssetForm() {
+    setEditingAssetId(null);
+    setAssetForm({ ...emptyAssetForm, currency: preferredCurrency });
+    setOpenForm(null);
+  }
+
+  function cancelHoldingForm() {
+    setEditingHoldingId(null);
+    setHoldingForm(emptyHoldingForm);
+    setOpenForm(null);
+  }
+
+  function cancelTransactionForm() {
+    setEditingTransactionId(null);
+    setTransactionForm(emptyTransactionForm);
+    setOpenForm(null);
+  }
+
   const holdingSummaries = holdings.map((holding) => buildHoldingSummary(holding, platforms, assets));
   const totalByCurrency = groupMoneyByCurrency(holdingSummaries, (summary) => summary.value, (summary) => summary.asset?.currency);
   const valueByPlatform = buildValueByPlatform(holdingSummaries).slice(0, 6);
   const valueByAssetType = buildValueByAssetType(holdingSummaries);
-  const recentTransactions = transactions.slice(0, 8);
   const duplicateAssetGroups = findDuplicateAssetGroups(assets);
+  const cryptoPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "crypto");
+  const stockEtfPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "stock_etf");
+  const otherPositions = holdingSummaries.filter((summary) => getInvestmentGroupForAsset(summary.asset) === "other");
+  const cryptoAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "crypto");
+  const stockEtfAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "stock_etf");
+  const otherAssets = assets.filter((asset) => getInvestmentGroupForAsset(asset) === "other");
+  const automaticPriceAssetCount = assets.filter(isAutomaticPriceAsset).length;
+  const manualOrPendingAssetCount = assets.filter((asset) => !isAutomaticPriceAsset(asset) || !asset.last_price_updated_at || Boolean(asset.last_price_error)).length;
+  const filteredTransactions = transactions.filter((transaction) =>
+    operationFilter === "all" || getInvestmentGroupForTransaction(transaction, assets) === operationFilter
+  );
+  const recentTransactions = filteredTransactions.slice(0, 8);
 
   if (isLoading) return <StatusPanel text="Cargando inversiones..." />;
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-6 overflow-x-hidden">
       <section className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Valor total estimado" value={<MoneyTotals totals={totalByCurrency} />} />
+        <SummaryCard label="Posiciones" value={String(holdings.length)} />
+        <SummaryCard label="Posiciones crypto" value={String(cryptoPositions.length)} />
+        <SummaryCard label="Acciones / ETFs" value={String(stockEtfPositions.length)} />
+        <SummaryCard label="Activos registrados" value={String(assets.length)} />
+        <SummaryCard label="Precios automaticos" value={String(automaticPriceAssetCount)} />
+        <SummaryCard label="Manual o pendiente" value={String(manualOrPendingAssetCount)} />
         <SummaryCard label="Plataformas activas" value={String(platforms.filter((item) => item.is_active).length)} />
-        <SummaryCard label="Activos activos" value={String(assets.filter((item) => item.is_active).length)} />
-        <SummaryCard label="Holdings" value={String(holdings.length)} />
       </section>
 
-      <div className="flex min-w-0 flex-col gap-3 rounded-md bg-blue-50 p-3 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
+      <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800 xl:flex-row xl:items-center xl:justify-between">
         <p>
-          Los precios pueden ser manuales, venir de CoinGecko para cripto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente.
+          Los precios pueden ser manuales, venir de CoinGecko para crypto o de Alpha Vantage para acciones y ETFs. Si Alpha Vantage marca limite, actualiza acciones/ETFs individualmente.
         </p>
         <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:min-w-[360px]">
           <button
@@ -556,88 +624,221 @@ export function InvestmentManager() {
 
       {message ? <StatusMessage message={message} /> : null}
 
-      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
-        <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={() => { setEditingPlatformId(null); setPlatformForm(emptyPlatformForm); }} />
-        <AssetForm form={assetForm} editingId={editingAssetId} isSaving={isSavingAsset} onSubmit={saveAsset} onChange={setAssetForm} onCancel={() => { setEditingAssetId(null); setAssetForm(emptyAssetForm); }} />
-      </section>
+      <InvestmentFormToolbar activeForm={openForm} onOpen={openCreateForm} />
 
-      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
-        <HoldingForm assets={assets} platforms={platforms} form={holdingForm} editingId={editingHoldingId} onSubmit={saveHolding} onChange={setHoldingForm} onCancel={() => { setEditingHoldingId(null); setHoldingForm(emptyHoldingForm); }} />
-        <TransactionForm
-          assets={assets}
-          platforms={platforms}
-          form={transactionForm}
-          editingId={editingTransactionId}
-          onSubmit={saveTransaction}
-          onChange={setTransactionForm}
-          onCancel={() => { setEditingTransactionId(null); setTransactionForm(emptyTransactionForm); }}
-        />
-      </section>
-
-      <section className="grid min-w-0 gap-6 xl:grid-cols-3">
-        <SimpleList title="Valor por plataforma">
-          {valueByPlatform.map((item) => (
-            <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
-          ))}
-          {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea holdings para ver este resumen." /> : null}
-        </SimpleList>
-        <SimpleList title="Valor por tipo de activo">
-          {valueByAssetType.map((item) => (
-            <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
-          ))}
-          {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
-        </SimpleList>
-        <SimpleList title="Plataformas">
-          {platforms.map((platform) => (
-            <ListRow
-              key={platform.id}
-              title={platform.name}
-              detail={`${platformTypeLabels[platform.platform_type]} - ${platform.currency}${platform.country ? ` - ${platform.country}` : ""}`}
-              value={platform.is_active ? "Activa" : "Inactiva"}
-              onEdit={() => startEditPlatform(platform)}
-              onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`, "Plataforma borrada correctamente.")}
+      {openForm ? (
+        <section className="min-w-0">
+          {openForm === "platform" ? (
+            <PlatformForm form={platformForm} editingId={editingPlatformId} onSubmit={savePlatform} onChange={setPlatformForm} onCancel={cancelPlatformForm} />
+          ) : null}
+          {openForm === "asset" ? (
+            <AssetForm form={assetForm} editingId={editingAssetId} isSaving={isSavingAsset} onSubmit={saveAsset} onChange={setAssetForm} onCancel={cancelAssetForm} />
+          ) : null}
+          {openForm === "holding" ? (
+            <HoldingForm assets={assets} platforms={platforms} form={holdingForm} editingId={editingHoldingId} onSubmit={saveHolding} onChange={setHoldingForm} onCancel={cancelHoldingForm} />
+          ) : null}
+          {openForm === "transaction" ? (
+            <TransactionForm
+              assets={assets}
+              platforms={platforms}
+              form={transactionForm}
+              editingId={editingTransactionId}
+              onSubmit={saveTransaction}
+              onChange={setTransactionForm}
+              onCancel={cancelTransactionForm}
             />
-          ))}
-          {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
-        </SimpleList>
-      </section>
+          ) : null}
+        </section>
+      ) : null}
 
-      <section className="grid min-w-0 gap-6 xl:grid-cols-2">
-        <HoldingsTable
-          dateFormat={dateFormat}
-          rows={holdingSummaries}
-          onEdit={(holding) => startEditHolding(holding)}
-          onDelete={(holding) => deleteRow("holdings", holding.id, "este holding", "Holding borrado. El valor total fue recalculado.")}
-        />
-        <AssetsTable
-          assets={assets}
-          dateFormat={dateFormat}
-          isUpdatingPrices={Boolean(updatingPriceGroup)}
-          updatingAssetId={updatingAssetId}
-          onEdit={(asset) => startEditAsset(asset)}
-          onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
-          onUpdate={(asset) =>
-            updatePrices({
-              assetId: asset.id,
-              successMessage: "Precio actualizado correctamente.",
-              emptyMessage: "Este activo no esta configurado con precio automatico.",
-            })
-          }
-        />
-      </section>
+      <InvestmentSectionTabs activeSection={activeSection} onChange={setActiveSection} />
 
-      <TransactionsTable
-        assets={assets}
-        dateFormat={dateFormat}
-        platforms={platforms}
-        transactions={recentTransactions}
-        onEdit={(transaction) => startEditTransaction(transaction)}
-        onDelete={(transaction) => deleteRow("investment_transactions", transaction.id, "esta transaccion", "Transaccion borrada correctamente.")}
-      />
+      {activeSection === "summary" ? (
+        <section className="grid min-w-0 gap-6 xl:grid-cols-3">
+          <GuidanceCard
+            title="Flujo recomendado"
+            items={[
+              "Primero crea la plataforma o broker.",
+              "Despues crea el activo una sola vez.",
+              "Luego registra una posicion con la cantidad que tienes.",
+              "Usa operaciones solo como historial por ahora.",
+            ]}
+          />
+          <SimpleList title="Valor por plataforma">
+            {valueByPlatform.map((item) => (
+              <ListRow key={`${item.platform.id}-${item.currency}`} title={item.platform.name} detail={platformTypeLabels[item.platform.platform_type]} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
+            ))}
+            {valueByPlatform.length === 0 ? <EmptyMessage text="Aun no hay valor por plataforma. Crea posiciones para ver este resumen." /> : null}
+          </SimpleList>
+          <SimpleList title="Valor por tipo de activo">
+            {valueByAssetType.map((item) => (
+              <ListRow key={`${item.assetType}-${item.currency}`} title={assetTypeLabels[item.assetType]} detail={item.currency} value={<MoneyAmount amount={item.amount} currency={item.currency} />} />
+            ))}
+            {valueByAssetType.length === 0 ? <EmptyMessage text="Aun no hay valor por tipo de activo." /> : null}
+          </SimpleList>
+        </section>
+      ) : null}
+
+      {activeSection === "positions" ? (
+        <section className="space-y-6">
+          <GuidanceCard
+            title="Posiciones actuales"
+            items={[
+              "Una posicion representa cuanto tienes de un activo en una plataforma.",
+              "Un activo se crea una sola vez. Si lo tienes en varias plataformas, crea varias posiciones.",
+              "Las posiciones son las que alimentan el valor estimado de inversiones.",
+            ]}
+          />
+          <HoldingsTable
+            dateFormat={dateFormat}
+            description="Crypto usa CoinGecko ID para precios automaticos."
+            emptyText="No hay posiciones crypto."
+            rows={cryptoPositions}
+            title="Crypto"
+            onEdit={(holding) => startEditHolding(holding)}
+            onDelete={(holding) => deleteRow("holdings", holding.id, "esta posicion", "Posicion borrada. El valor total fue recalculado.")}
+          />
+          <HoldingsTable
+            dateFormat={dateFormat}
+            description="Acciones y ETFs usan ticker de Alpha Vantage para precios automaticos."
+            emptyText="No hay posiciones de acciones o ETFs."
+            rows={stockEtfPositions}
+            title="Acciones y ETFs"
+            onEdit={(holding) => startEditHolding(holding)}
+            onDelete={(holding) => deleteRow("holdings", holding.id, "esta posicion", "Posicion borrada. El valor total fue recalculado.")}
+          />
+          <HoldingsTable
+            dateFormat={dateFormat}
+            description="Otros activos se mantienen con precio manual por ahora."
+            emptyText="No hay otros activos registrados como posicion."
+            rows={otherPositions}
+            title="Otros activos"
+            onEdit={(holding) => startEditHolding(holding)}
+            onDelete={(holding) => deleteRow("holdings", holding.id, "esta posicion", "Posicion borrada. El valor total fue recalculado.")}
+          />
+        </section>
+      ) : null}
+
+      {activeSection === "assets" ? (
+        <section className="space-y-6">
+          <GuidanceCard
+            title="Activos y precios"
+            items={[
+              "Crypto usa CoinGecko ID: BTC debe configurarse como bitcoin.",
+              "Acciones y ETFs usan ticker de Alpha Vantage: AAPL, MSFT, VOO o QQQ.",
+              "El precio actual alimenta el valor estimado de tus posiciones.",
+            ]}
+          />
+          <AssetsTable
+            assets={cryptoAssets}
+            dateFormat={dateFormat}
+            description="Crypto con precio manual o CoinGecko."
+            emptyText="No hay activos crypto."
+            isUpdatingPrices={Boolean(updatingPriceGroup)}
+            title="Crypto"
+            updatingAssetId={updatingAssetId}
+            onEdit={(asset) => startEditAsset(asset)}
+            onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
+            onUpdate={(asset) =>
+              updatePrices({
+                assetId: asset.id,
+                successMessage: "Precio actualizado correctamente.",
+                emptyMessage: "Este activo no esta configurado con precio automatico.",
+              })
+            }
+          />
+          <AssetsTable
+            assets={stockEtfAssets}
+            dateFormat={dateFormat}
+            description="Acciones y ETFs con precio manual o Alpha Vantage."
+            emptyText="No hay acciones o ETFs."
+            isUpdatingPrices={Boolean(updatingPriceGroup)}
+            title="Acciones y ETFs"
+            updatingAssetId={updatingAssetId}
+            onEdit={(asset) => startEditAsset(asset)}
+            onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
+            onUpdate={(asset) =>
+              updatePrices({
+                assetId: asset.id,
+                successMessage: "Precio actualizado correctamente.",
+                emptyMessage: "Este activo no esta configurado con precio automatico.",
+              })
+            }
+          />
+          <AssetsTable
+            assets={otherAssets}
+            dateFormat={dateFormat}
+            description="Fondos, bonos, efectivo de inversion u otros instrumentos manuales."
+            emptyText="No hay otros activos."
+            isUpdatingPrices={Boolean(updatingPriceGroup)}
+            title="Otros / manuales"
+            updatingAssetId={updatingAssetId}
+            onEdit={(asset) => startEditAsset(asset)}
+            onDelete={(asset) => deleteRow("assets", asset.id, `el activo "${asset.symbol}"`, "Activo borrado correctamente.")}
+            onUpdate={(asset) =>
+              updatePrices({
+                assetId: asset.id,
+                successMessage: "Precio actualizado correctamente.",
+                emptyMessage: "Este activo no esta configurado con precio automatico.",
+              })
+            }
+          />
+        </section>
+      ) : null}
+
+      {activeSection === "operations" ? (
+        <section className="space-y-4">
+          <GuidanceCard
+            title="Operaciones"
+            items={[
+              "Las operaciones son historial.",
+              "Por ahora no modifican automaticamente la cantidad de la posicion.",
+              "Si compras o vendes, ajusta tambien la posicion si quieres que el valor estimado cambie.",
+            ]}
+          />
+          <OperationFilters value={operationFilter} onChange={setOperationFilter} />
+          <TransactionsTable
+            assets={assets}
+            dateFormat={dateFormat}
+            platforms={platforms}
+            transactions={recentTransactions}
+            onEdit={(transaction) => startEditTransaction(transaction)}
+            onDelete={(transaction) => deleteRow("investment_transactions", transaction.id, "esta operacion", "Operacion borrada correctamente.")}
+          />
+        </section>
+      ) : null}
+
+      {activeSection === "platforms" ? (
+        <section className="grid min-w-0 gap-6 xl:grid-cols-2">
+          <GuidanceCard
+            title="Plataformas / brokers"
+            items={[
+              "La plataforma indica donde tienes la inversion.",
+              "Una misma accion, ETF o crypto puede existir como posicion en distintas plataformas.",
+              "Las plataformas inactivas se conservan para historial.",
+            ]}
+          />
+          <SimpleList title="Plataformas / brokers">
+            {platforms.map((platform) => (
+              <ListRow
+                key={platform.id}
+                title={platform.name}
+                detail={`${platformTypeLabels[platform.platform_type]} - ${platform.currency}${platform.country ? ` - ${platform.country}` : ""}`}
+                value={platform.is_active ? "Activa" : "Inactiva"}
+                onEdit={() => startEditPlatform(platform)}
+                onDelete={() => deleteRow("platforms", platform.id, `la plataforma "${platform.name}"`, "Plataforma borrada correctamente.")}
+              />
+            ))}
+            {platforms.length === 0 ? <EmptyMessage text="Aun no hay plataformas. Crea una para empezar." /> : null}
+          </SimpleList>
+        </section>
+      ) : null}
     </div>
   );
 
   function startEditPlatform(platform: InvestmentPlatform) {
+    resetEditingState();
+    setOpenForm("platform");
     setEditingPlatformId(platform.id);
     setPlatformForm({
       name: platform.name,
@@ -651,6 +852,8 @@ export function InvestmentManager() {
   }
 
   function startEditAsset(asset: InvestmentAsset) {
+    resetEditingState();
+    setOpenForm("asset");
     setEditingAssetId(asset.id);
     setAssetForm({
       symbol: asset.symbol,
@@ -668,6 +871,8 @@ export function InvestmentManager() {
   }
 
   function startEditHolding(holding: Holding) {
+    resetEditingState();
+    setOpenForm("holding");
     setEditingHoldingId(holding.id);
     setHoldingForm({
       platform_id: holding.platform_id,
@@ -676,10 +881,12 @@ export function InvestmentManager() {
       average_cost: holding.average_cost === null ? "" : String(holding.average_cost),
       notes: holding.notes ?? "",
     });
-    setMessage({ type: "info", text: "Editando holding." });
+    setMessage({ type: "info", text: "Editando posicion." });
   }
 
   function startEditTransaction(transaction: InvestmentTransaction) {
+    resetEditingState();
+    setOpenForm("transaction");
     setEditingTransactionId(transaction.id);
     setTransactionForm({
       platform_id: transaction.platform_id,
@@ -692,8 +899,139 @@ export function InvestmentManager() {
       fees: String(transaction.fees),
       description: transaction.description ?? "",
     });
-    setMessage({ type: "info", text: "Editando transaccion." });
+    setMessage({ type: "info", text: "Editando operacion." });
   }
+}
+
+function InvestmentFormToolbar({
+  activeForm,
+  onOpen,
+}: {
+  activeForm: InvestmentFormKey;
+  onOpen: (formKey: Exclude<InvestmentFormKey, null>) => void;
+}) {
+  const actions: Array<{ key: Exclude<InvestmentFormKey, null>; label: string; description: string }> = [
+    { key: "platform", label: "Nueva plataforma", description: "Broker, exchange, wallet o banco." },
+    { key: "asset", label: "Nuevo activo", description: "BTC, VOO, AAPL u otro instrumento." },
+    { key: "holding", label: "Nueva posicion", description: "Cantidad de un activo en una plataforma." },
+    { key: "transaction", label: "Nueva operacion", description: "Compra, venta, dividendo o ajuste." },
+  ];
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-slate-950">Registrar inversiones</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Empieza por plataforma y activo. Despues crea posiciones; las operaciones son historial.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {actions.map((action) => {
+          const isActive = activeForm === action.key;
+          return (
+            <button
+              className={`rounded-lg border p-4 text-left transition ${
+                isActive
+                  ? "border-teal-500 bg-teal-50 text-teal-900"
+                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-teal-200 hover:bg-white"
+              }`}
+              key={action.key}
+              onClick={() => onOpen(action.key)}
+              type="button"
+            >
+              <span className="block text-sm font-semibold">{action.label}</span>
+              <span className="mt-1 block text-xs text-slate-500">{action.description}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function InvestmentSectionTabs({
+  activeSection,
+  onChange,
+}: {
+  activeSection: InvestmentSection;
+  onChange: (section: InvestmentSection) => void;
+}) {
+  const sections: Array<{ key: InvestmentSection; label: string }> = [
+    { key: "positions", label: "Posiciones" },
+    { key: "assets", label: "Activos y precios" },
+    { key: "operations", label: "Operaciones" },
+    { key: "summary", label: "Resumen" },
+    { key: "platforms", label: "Plataformas" },
+  ];
+
+  return (
+    <nav className="flex max-w-full gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white p-2 shadow-sm" aria-label="Secciones de inversiones">
+      {sections.map((section) => (
+        <button
+          className={`whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition ${
+            activeSection === section.key
+              ? "bg-slate-950 text-white"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          }`}
+          key={section.key}
+          onClick={() => onChange(section.key)}
+          type="button"
+        >
+          {section.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function GuidanceCard({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border border-teal-100 bg-teal-50/70 p-5 text-sm text-teal-950">
+      <h2 className="font-semibold">{title}</h2>
+      <ul className="mt-3 space-y-2">
+        {items.map((item) => (
+          <li className="flex gap-2" key={item}>
+            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function OperationFilters({
+  value,
+  onChange,
+}: {
+  value: InvestmentGroupKey | "all";
+  onChange: (value: InvestmentGroupKey | "all") => void;
+}) {
+  const filters: Array<{ key: InvestmentGroupKey | "all"; label: string }> = [
+    { key: "all", label: "Todas" },
+    { key: "crypto", label: "Crypto" },
+    { key: "stock_etf", label: "Acciones / ETFs" },
+    { key: "other", label: "Otros" },
+  ];
+
+  return (
+    <div className="flex max-w-full gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-white p-2 shadow-sm" aria-label="Filtros de operaciones">
+      {filters.map((filter) => (
+        <button
+          className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ${
+            value === filter.key ? "bg-teal-700 text-white" : "text-slate-600 hover:bg-slate-100"
+          }`}
+          key={filter.key}
+          onClick={() => onChange(filter.key)}
+          type="button"
+        >
+          {filter.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function PlatformForm({ form, editingId, onSubmit, onChange, onCancel }: {
@@ -733,7 +1071,7 @@ function AssetForm({ form, editingId, isSaving, onSubmit, onChange, onCancel }: 
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
       <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar activo" : "Nuevo activo"}</h2>
       <p className="mt-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-        Crea cada activo una sola vez por simbolo, tipo y moneda. Si tienes el mismo activo en otra plataforma, crea un holding nuevo usando el activo existente.
+        Crea cada activo una sola vez por simbolo, tipo y moneda. Si tienes el mismo activo en otra plataforma, crea una posicion nueva usando el activo existente.
       </p>
       <div className="mt-4 grid gap-4">
         <TextInput label="Simbolo" placeholder="VOO, AAPL, BTC..." value={form.symbol} onChange={(value) => onChange({ ...form, symbol: value })} />
@@ -819,7 +1157,7 @@ function DuplicateAssetsNotice({
     <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <p className="font-semibold">Hay activos duplicados que conviene revisar.</p>
       <p className="mt-1">
-        Un activo debe existir una sola vez por simbolo, tipo y moneda. Para tenerlo en varias plataformas, usa holdings separados.
+        Un activo debe existir una sola vez por simbolo, tipo y moneda. Para tenerlo en varias plataformas, usa posiciones separadas.
       </p>
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {groups.map((group) => (
@@ -846,23 +1184,23 @@ function HoldingForm({ assets, platforms, form, editingId, onSubmit, onChange, o
 }) {
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar holding" : "Nuevo holding"}</h2>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar posicion" : "Nueva posicion"}</h2>
       <p className="mt-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
-        Puedes tener el mismo activo en varias plataformas. Dentro de una misma plataforma, usa un solo holding por activo.
+        Una posicion representa cuanto tienes de un activo en una plataforma. Dentro de una misma plataforma, usa una sola posicion por activo.
       </p>
       <div className="mt-4 grid gap-4">
         <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
         <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
         {platforms.length === 0 || assets.length === 0 ? (
           <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-            Para crear un holding primero necesitas al menos una plataforma y un activo.
+            Para crear una posicion primero necesitas al menos una plataforma y un activo.
           </p>
         ) : null}
         <TextInput label="Cantidad" min="0" step="0.00000001" type="number" value={form.quantity} onChange={(value) => onChange({ ...form, quantity: value })} />
         <TextInput label="Precio promedio opcional" min="0" required={false} step="0.00000001" type="number" value={form.average_cost} onChange={(value) => onChange({ ...form, average_cost: value })} />
         <TextInput label="Notas opcionales" required={false} value={form.notes} onChange={(value) => onChange({ ...form, notes: value })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar holding" : "Crear holding"} onCancel={onCancel} />
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar posicion" : "Crear posicion"} onCancel={onCancel} />
     </form>
   );
 }
@@ -888,13 +1226,16 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
 
   return (
     <form className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar transaccion" : "Nueva transaccion"}</h2>
+      <h2 className="text-lg font-semibold text-slate-950">{editingId ? "Editar operacion" : "Nueva operacion"}</h2>
+      <p className="mt-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+        Las operaciones son historial. Por ahora no modifican automaticamente la cantidad de la posicion.
+      </p>
       <div className="mt-4 grid gap-4">
         <PlatformSelect platforms={platforms} value={form.platform_id} onChange={(value) => onChange({ ...form, platform_id: value })} />
         <AssetSelect assets={assets} value={form.asset_id} onChange={(value) => onChange({ ...form, asset_id: value })} />
         {platforms.length === 0 || assets.length === 0 ? (
           <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-            Para registrar transacciones primero crea una plataforma y un activo.
+            Para registrar operaciones primero crea una plataforma y un activo.
           </p>
         ) : null}
         <TextInput label="Fecha" type="date" value={form.transaction_date} onChange={(value) => onChange({ ...form, transaction_date: value })} />
@@ -908,25 +1249,42 @@ function TransactionForm({ assets, platforms, form, editingId, onSubmit, onChang
         <TextInput label="Comision opcional" min="0" step="0.01" type="number" value={form.fees} onChange={(value) => onChange({ ...form, fees: value })} />
         <TextInput label="Descripcion opcional" required={false} value={form.description} onChange={(value) => onChange({ ...form, description: value })} />
       </div>
-      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar transaccion" : "Registrar transaccion"} onCancel={onCancel} />
+      <FormButtons editing={Boolean(editingId)} submitLabel={editingId ? "Guardar operacion" : "Registrar operacion"} onCancel={onCancel} />
     </form>
   );
 }
 
-function HoldingsTable({ dateFormat, rows, onEdit, onDelete }: { dateFormat: string; rows: HoldingSummary[]; onEdit: (holding: Holding) => void; onDelete: (holding: Holding) => void }) {
+function HoldingsTable({
+  dateFormat,
+  description,
+  emptyText,
+  rows,
+  title,
+  onEdit,
+  onDelete,
+}: {
+  dateFormat: string;
+  description?: string;
+  emptyText: string;
+  rows: HoldingSummary[];
+  title: string;
+  onEdit: (holding: Holding) => void;
+  onDelete: (holding: Holding) => void;
+}) {
   return (
-    <TableCard title="Holdings">
-      <table className="w-full min-w-[1120px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+    <TableCard title={title} description={description}>
+      <table className="w-full min-w-[1180px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo / instrumento</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 pr-4 font-medium">Precio promedio</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Notas</th><th className="py-2 text-right font-medium">Valor estimado</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {rows.map(({ holding, platform, asset, value }) => (
             <tr className="border-b border-slate-100" key={holding.id}>
               <td className="py-3 pr-4">{platform?.name ?? "Plataforma no encontrada"}</td>
               <td className="py-3 pr-4">{asset ? `${asset.symbol} - ${asset.name}` : "Activo no encontrado"}</td>
+              <td className="py-3 pr-4">{asset ? <AssetTypeBadge assetType={asset.asset_type} /> : "Sin tipo"}</td>
               <td className="py-3 pr-4">{Number(holding.quantity).toLocaleString("es-MX")}</td>
               <td className="py-3 pr-4">{holding.average_cost === null ? "Sin dato" : <MoneyAmount amount={Number(holding.average_cost)} currency={asset?.currency} />}</td>
               <td className="py-3 pr-4"><MoneyAmount amount={Number(asset?.current_price ?? 0)} currency={asset?.currency} /></td>
-              <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
+              <td className="py-3 pr-4"><PriceSourceBadge asset={asset} /></td>
               <td className="py-3 pr-4">{asset?.last_price_updated_at ? formatDateTime(asset.last_price_updated_at, dateFormat) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset?.last_price_error} /></td>
               <td className="py-3 pr-4">{holding.notes || "Sin notas"}</td>
@@ -936,7 +1294,7 @@ function HoldingsTable({ dateFormat, rows, onEdit, onDelete }: { dateFormat: str
           ))}
         </tbody>
       </table>
-      {rows.length === 0 ? <EmptyMessage text="Aun no hay holdings. Crea una plataforma, un activo y despues registra tu cantidad." /> : null}
+      {rows.length === 0 ? <EmptyMessage text={emptyText} /> : null}
     </TableCard>
   );
 }
@@ -944,7 +1302,10 @@ function HoldingsTable({ dateFormat, rows, onEdit, onDelete }: { dateFormat: str
 function AssetsTable({
   assets,
   dateFormat,
+  description,
+  emptyText,
   isUpdatingPrices,
+  title,
   updatingAssetId,
   onEdit,
   onDelete,
@@ -952,24 +1313,28 @@ function AssetsTable({
 }: {
   assets: InvestmentAsset[];
   dateFormat: string;
+  description?: string;
+  emptyText: string;
   isUpdatingPrices: boolean;
+  title: string;
   updatingAssetId: string | null;
   onEdit: (asset: InvestmentAsset) => void;
   onDelete: (asset: InvestmentAsset) => void;
   onUpdate: (asset: InvestmentAsset) => void;
 }) {
   return (
-    <TableCard title="Activos">
-      <table className="w-full min-w-[1040px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Estado</th><th className="py-2 pr-4 font-medium">Precio</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+    <TableCard title={title} description={description}>
+      <table className="w-full min-w-[1120px] text-left text-sm">
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Simbolo / ticker</th><th className="py-2 pr-4 font-medium">Nombre</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Precio actual</th><th className="py-2 pr-4 font-medium">Fuente</th><th className="py-2 pr-4 font-medium">Estado precio</th><th className="py-2 pr-4 font-medium">Ultima actualizacion</th><th className="py-2 pr-4 font-medium">Error reciente</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Actualizar precio</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {assets.map((asset) => (
             <tr className="border-b border-slate-100" key={asset.id}>
               <td className="py-3 pr-4 font-semibold">{asset.symbol}</td>
               <td className="py-3 pr-4">{asset.name}</td>
-              <td className="py-3 pr-4">{assetTypeLabels[asset.asset_type]}</td>
+              <td className="py-3 pr-4"><AssetTypeBadge assetType={asset.asset_type} /></td>
               <td className="py-3 pr-4"><MoneyAmount amount={Number(asset.current_price)} currency={asset.currency} /></td>
-              <td className="py-3 pr-4">{getPriceSourceLabel(asset)}</td>
+              <td className="py-3 pr-4"><PriceSourceBadge asset={asset} /></td>
+              <td className="py-3 pr-4"><PriceStatusText asset={asset} /></td>
               <td className="py-3 pr-4">{asset.last_price_updated_at ? formatDateTime(asset.last_price_updated_at, dateFormat) : "Sin actualizacion"}</td>
               <td className="py-3 pr-4"><PriceErrorText error={asset.last_price_error} /></td>
               <td className="py-3 pr-4">{asset.is_active ? "Activo" : "Inactivo"}</td>
@@ -992,7 +1357,7 @@ function AssetsTable({
           ))}
         </tbody>
       </table>
-      {assets.length === 0 ? <EmptyMessage text="Aun no hay activos. Registra uno como VOO, AAPL, BTC o efectivo de inversion." /> : null}
+      {assets.length === 0 ? <EmptyMessage text={emptyText} /> : null}
     </TableCard>
   );
 }
@@ -1006,9 +1371,9 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
   onDelete: (transaction: InvestmentTransaction) => void;
 }) {
   return (
-    <TableCard title="Transacciones recientes">
+    <TableCard title="Operaciones recientes" description="Estas operaciones son historial; no modifican automaticamente tus posiciones.">
       <table className="w-full min-w-[860px] text-left text-sm">
-        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Fecha</th><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 text-right font-medium">Total</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
+        <thead><tr className="border-b border-slate-200 text-slate-500"><th className="py-2 pr-4 font-medium">Fecha</th><th className="py-2 pr-4 font-medium">Plataforma</th><th className="py-2 pr-4 font-medium">Activo</th><th className="py-2 pr-4 font-medium">Grupo</th><th className="py-2 pr-4 font-medium">Tipo</th><th className="py-2 pr-4 font-medium">Cantidad</th><th className="py-2 text-right font-medium">Total</th><th className="py-2 pl-4 text-right font-medium">Acciones</th></tr></thead>
         <tbody>
           {transactions.map((transaction) => {
             const asset = assets.find((item) => item.id === transaction.asset_id);
@@ -1017,6 +1382,7 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
                 <td className="py-3 pr-4">{formatDate(transaction.transaction_date, dateFormat)}</td>
                 <td className="py-3 pr-4">{platforms.find((item) => item.id === transaction.platform_id)?.name ?? "Plataforma no encontrada"}</td>
                 <td className="py-3 pr-4">{asset?.symbol ?? "Activo no encontrado"}</td>
+                <td className="py-3 pr-4">{asset ? <AssetTypeBadge assetType={asset.asset_type} /> : "Sin grupo"}</td>
                 <td className="py-3 pr-4">{transactionTypeLabels[transaction.transaction_type]}</td>
                 <td className="py-3 pr-4">{Number(transaction.quantity).toLocaleString("es-MX")}</td>
                 <td className="py-3 text-right font-semibold"><MoneyAmount amount={Number(transaction.total_amount)} currency={asset?.currency} /></td>
@@ -1026,7 +1392,7 @@ function TransactionsTable({ assets, dateFormat, platforms, transactions, onEdit
           })}
         </tbody>
       </table>
-      {transactions.length === 0 ? <EmptyMessage text="Aun no hay transacciones registradas." /> : null}
+      {transactions.length === 0 ? <EmptyMessage text="Aun no hay operaciones registradas para este filtro." /> : null}
     </TableCard>
   );
 }
@@ -1039,6 +1405,16 @@ function buildHoldingSummary(holding: Holding, platforms: InvestmentPlatform[], 
     asset,
     value: Number(holding.quantity) * Number(asset?.current_price ?? 0),
   };
+}
+
+function getInvestmentGroupForAsset(asset: Pick<InvestmentAsset, "asset_type"> | undefined): InvestmentGroupKey {
+  if (asset?.asset_type === "crypto") return "crypto";
+  if (asset?.asset_type === "stock" || asset?.asset_type === "etf") return "stock_etf";
+  return "other";
+}
+
+function getInvestmentGroupForTransaction(transaction: InvestmentTransaction, assets: InvestmentAsset[]): InvestmentGroupKey {
+  return getInvestmentGroupForAsset(assets.find((asset) => asset.id === transaction.asset_id));
 }
 
 function buildValueByAssetType(rows: HoldingSummary[]) {
@@ -1083,7 +1459,7 @@ function validateAsset(form: typeof emptyAssetForm, assets: InvestmentAsset[], e
   if (!form.currency) return "Selecciona la moneda del activo.";
   if (!isSupportedCurrency(form.currency)) return "Selecciona una moneda valida.";
   if (findDuplicateAssetForForm(form, assets, editingAssetId)) {
-    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea un holding nuevo para otra plataforma.";
+    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea una posicion nueva para otra plataforma.";
   }
   if (!Number.isFinite(Number(form.current_price)) || Number(form.current_price) < 0) return "El precio actual manual no puede ser negativo.";
   if (form.asset_type === "crypto" && form.price_source === "coingecko" && !form.coingecko_id.trim()) {
@@ -1127,7 +1503,7 @@ function validateHolding(form: typeof emptyHoldingForm, holdings: Holding[], edi
   if (!form.platform_id) return "Selecciona una plataforma.";
   if (!form.asset_id) return "Selecciona un activo.";
   if (findDuplicateHoldingForForm(form, holdings, editingHoldingId)) {
-    return "Ya existe un holding para esta plataforma y activo. Edita ese holding en lugar de crear otro duplicado.";
+    return "Ya existe una posicion para esta plataforma y activo. Edita esa posicion en lugar de crear otra duplicada.";
   }
   if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
   if (form.average_cost !== "" && (!Number.isFinite(Number(form.average_cost)) || Number(form.average_cost) < 0)) return "El precio promedio no puede ser negativo.";
@@ -1192,9 +1568,9 @@ function normalizeAssetSymbol(symbol: string) {
 function validateTransaction(form: typeof emptyTransactionForm) {
   if (!form.platform_id) return "Selecciona una plataforma.";
   if (!form.asset_id) return "Selecciona un activo.";
-  if (!form.transaction_date) return "Selecciona la fecha de la transaccion.";
-  if (!isValidDateInput(form.transaction_date)) return "La fecha de la transaccion no parece valida. Selecciona una fecha desde el calendario.";
-  if (!form.transaction_type) return "Selecciona el tipo de transaccion.";
+  if (!form.transaction_date) return "Selecciona la fecha de la operacion.";
+  if (!isValidDateInput(form.transaction_date)) return "La fecha de la operacion no parece valida. Selecciona una fecha desde el calendario.";
+  if (!form.transaction_type) return "Selecciona el tipo de operacion.";
   if (!Number.isFinite(Number(form.quantity)) || Number(form.quantity) < 0) return "La cantidad no puede ser negativa.";
   if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0) return "El precio unitario no puede ser negativo.";
   if (!Number.isFinite(Number(form.total_amount)) || Number(form.total_amount) < 0) return "El monto total no puede ser negativo.";
@@ -1216,10 +1592,10 @@ function calculateTransactionTotal(quantity: string, price: string) {
 
 function getFriendlyInvestmentError(error: string) {
   if (error.includes("assets_user_symbol_type_currency_unique_idx")) {
-    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea un holding nuevo para otra plataforma.";
+    return "Ya existe un activo con ese simbolo, tipo y moneda. Edita el activo existente o crea una posicion nueva para otra plataforma.";
   }
   if (error.includes("holdings_user_id_platform_id_asset_id_key")) {
-    return "Ya existe un holding para esta plataforma y activo. Edita ese holding en lugar de crear otro duplicado.";
+    return "Ya existe una posicion para esta plataforma y activo. Edita esa posicion en lugar de crear otra duplicada.";
   }
   if (error.includes("price_source") || error.includes("coingecko_id") || error.includes("last_price_updated_at")) {
     return "Falta actualizar Supabase para precios cripto. Ejecuta el SQL docs/ADD_CRYPTO_PRICE_SUPPORT.sql.";
@@ -1229,7 +1605,7 @@ function getFriendlyInvestmentError(error: string) {
   }
   if (error.includes("duplicate") || error.includes("unique")) return "Ya existe un registro parecido. Revisa plataforma y activo.";
   if (error.includes("foreign key") || error.includes("violates")) {
-    return "No pude borrar este registro porque todavia tiene informacion relacionada. Revisa holdings o transacciones vinculadas.";
+    return "No pude borrar este registro porque todavia tiene informacion relacionada. Revisa posiciones u operaciones vinculadas.";
   }
   return `No se pudo completar la accion. Detalle: ${error}`;
 }
@@ -1265,9 +1641,43 @@ function PriceErrorText({ error }: { error: string | null | undefined }) {
   );
 }
 
+function AssetTypeBadge({ assetType }: { assetType: InvestmentAssetType }) {
+  const styles: Record<InvestmentGroupKey, string> = {
+    crypto: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    stock_etf: "border-blue-200 bg-blue-50 text-blue-700",
+    other: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+  const group = getInvestmentGroupForAsset({ asset_type: assetType });
+
+  return (
+    <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${styles[group]}`}>
+      {assetTypeLabels[assetType]}
+    </span>
+  );
+}
+
+function PriceSourceBadge({ asset }: { asset: InvestmentAsset | undefined }) {
+  const label = getPriceSourceLabel(asset);
+  const styles =
+    label === "CoinGecko"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : label === "Alpha Vantage"
+        ? "border-blue-200 bg-blue-50 text-blue-700"
+        : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${styles}`}>{label}</span>;
+}
+
+function PriceStatusText({ asset }: { asset: InvestmentAsset }) {
+  if (asset.last_price_error) return <span className="text-xs font-medium text-red-700">Error reciente</span>;
+  if (!isAutomaticPriceAsset(asset)) return <span className="text-xs text-slate-500">Manual</span>;
+  if (!asset.last_price_updated_at) return <span className="text-xs font-medium text-amber-700">Sin actualizar</span>;
+  return <span className="text-xs font-medium text-emerald-700">Actualizado</span>;
+}
+
 function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentPlatform[]; value: string; onChange: (value: string) => void }) {
   return (
-    <SelectInput label="Plataforma" value={value} onChange={onChange}>
+    <SelectInput label="Plataforma / broker" value={value} onChange={onChange}>
       <option value="">Selecciona una plataforma</option>
       {platforms.map((platform) => <option key={platform.id} value={platform.id}>{platform.name} - {platform.currency}</option>)}
     </SelectInput>
@@ -1276,7 +1686,7 @@ function PlatformSelect({ platforms, value, onChange }: { platforms: InvestmentP
 
 function AssetSelect({ assets, value, onChange }: { assets: InvestmentAsset[]; value: string; onChange: (value: string) => void }) {
   return (
-    <SelectInput label="Activo" value={value} onChange={onChange}>
+    <SelectInput label="Activo / instrumento" value={value} onChange={onChange}>
       <option value="">Selecciona un activo</option>
       {assets.map((asset) => <option key={asset.id} value={asset.id}>{asset.symbol} - {asset.name}</option>)}
     </SelectInput>
@@ -1333,7 +1743,9 @@ function FormButtons({ disabled = false, editing, submitLabel, onCancel }: { dis
   return (
     <>
       <button className="mt-5 w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:bg-teal-300" disabled={disabled} type="submit">{submitLabel}</button>
-      {editing ? <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700" disabled={disabled} onClick={onCancel} type="button">Cancelar edicion</button> : null}
+      <button className="mt-2 w-full rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50" disabled={disabled} onClick={onCancel} type="button">
+        {editing ? "Cancelar edicion" : "Cancelar"}
+      </button>
     </>
   );
 }
@@ -1385,10 +1797,11 @@ function ListRow({ title, detail, value, onEdit, onDelete }: { title: string; de
   );
 }
 
-function TableCard({ title, children }: { title: string; children: React.ReactNode }) {
+function TableCard({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
       <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+      {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
       <div className="mt-4 max-w-full overflow-x-auto">{children}</div>
     </div>
   );

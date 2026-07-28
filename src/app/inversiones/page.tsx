@@ -7,7 +7,7 @@ export default function Page() {
       <section className="mb-6">
         <h1 className="text-3xl font-bold text-slate-950">Inversiones</h1>
         <p className="mt-2 text-slate-600">
-          Registra plataformas, activos, holdings y transacciones de forma manual.
+          Revisa tus posiciones, activos, precios y operaciones por plataforma.
         </p>
       </section>
       <InvestmentManager />
