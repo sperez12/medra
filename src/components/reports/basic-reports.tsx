@@ -109,7 +109,11 @@ type InvestmentHoldingReportRow = {
   platform: InvestmentPlatform | undefined;
   group: InvestmentGroupKey;
   quantity: number;
+  averageCost: number | null;
   currentPrice: number;
+  hasPositiveQuantity: boolean;
+  hasValidAverageCost: boolean;
+  hasValidCurrentPrice: boolean;
   value: number;
   currency: string;
   cost: number | null;
@@ -133,7 +137,9 @@ type InvestmentReport = {
     stale: InvestmentAsset[];
   };
   approximateGainRows: InvestmentHoldingReportRow[];
-  approximateGainTotals: Array<{ currency: string; value: number; cost: number; gain: number; percent: number | null }>;
+  approximateGainTotals: Array<{ currency: string; value: number; cost: number; gain: number; percent: number | null; includedCount: number }>;
+  approximateGainExcludedWithoutCost: number;
+  approximateGainExcludedWithoutPrice: number;
   recentTransactions: Array<{ transaction: InvestmentTransaction; asset: InvestmentAsset | undefined; platform: InvestmentPlatform | undefined; currency: string }>;
   transactionTotals: Array<{ transactionType: InvestmentTransactionType; currency: string; amount: number; count: number }>;
 };
@@ -662,11 +668,16 @@ function buildInvestmentReport(
     const asset = assets.find((item) => item.id === holding.asset_id);
     if (!asset) return [];
 
-    const quantity = Number(holding.quantity);
-    const currentPrice = Number(asset.current_price ?? 0);
+    const quantity = getFiniteNumber(holding.quantity) ?? 0;
+    const averageCost = getFiniteNumber(holding.average_cost);
+    const currentPriceValue = getFiniteNumber(asset.current_price);
+    const currentPrice = currentPriceValue ?? 0;
+    const hasPositiveQuantity = quantity > 0;
+    const hasValidAverageCost = averageCost !== null && averageCost > 0;
+    const hasValidCurrentPrice = currentPriceValue !== null && currentPriceValue >= 0;
     const value = quantity * currentPrice;
     const currency = normalizeCurrency(asset.currency);
-    const cost = holding.average_cost === null ? null : quantity * Number(holding.average_cost);
+    const cost = hasPositiveQuantity && hasValidAverageCost && hasValidCurrentPrice ? quantity * (averageCost ?? 0) : null;
     const unrealizedGain = cost === null ? null : value - cost;
     const unrealizedPercent = cost !== null && cost !== 0 ? (unrealizedGain ?? 0) / Math.abs(cost) * 100 : null;
 
@@ -676,7 +687,11 @@ function buildInvestmentReport(
       platform: platforms.find((item) => item.id === holding.platform_id),
       group: getInvestmentGroupForAsset(asset),
       quantity,
+      averageCost,
       currentPrice,
+      hasPositiveQuantity,
+      hasValidAverageCost,
+      hasValidCurrentPrice,
       value,
       currency,
       cost,
@@ -691,9 +706,11 @@ function buildInvestmentReport(
   const concentrationByAsset = buildInvestmentConcentrationByAsset(holdingRows);
   const priceStatus = buildInvestmentPriceStatus(assets);
   const approximateGainRows = holdingRows
-    .filter((row) => row.cost !== null)
+    .filter((row) => row.hasPositiveQuantity && row.hasValidAverageCost && row.hasValidCurrentPrice && row.cost !== null)
     .sort((a, b) => Math.abs(b.unrealizedGain ?? 0) - Math.abs(a.unrealizedGain ?? 0));
   const approximateGainTotals = buildInvestmentApproximateGainTotals(approximateGainRows);
+  const approximateGainExcludedWithoutCost = holdingRows.filter((row) => row.hasPositiveQuantity && !row.hasValidAverageCost).length;
+  const approximateGainExcludedWithoutPrice = holdingRows.filter((row) => row.hasPositiveQuantity && row.hasValidAverageCost && !row.hasValidCurrentPrice).length;
   const recentTransactions = transactions.slice(0, 8).map((transaction) => {
     const asset = assets.find((item) => item.id === transaction.asset_id);
     const platform = platforms.find((item) => item.id === transaction.platform_id);
@@ -715,6 +732,8 @@ function buildInvestmentReport(
     priceStatus,
     approximateGainRows,
     approximateGainTotals,
+    approximateGainExcludedWithoutCost,
+    approximateGainExcludedWithoutPrice,
     recentTransactions,
     transactionTotals,
   };
@@ -805,15 +824,16 @@ function buildInvestmentPriceStatus(assets: InvestmentAsset[]) {
 }
 
 function buildInvestmentApproximateGainTotals(rows: InvestmentHoldingReportRow[]) {
-  const totals = new Map<string, { currency: string; value: number; cost: number; gain: number; percent: number | null }>();
+  const totals = new Map<string, { currency: string; value: number; cost: number; gain: number; percent: number | null; includedCount: number }>();
 
   rows.forEach((row) => {
     if (row.cost === null || row.unrealizedGain === null) return;
-    const current = totals.get(row.currency) ?? { currency: row.currency, value: 0, cost: 0, gain: 0, percent: null };
+    const current = totals.get(row.currency) ?? { currency: row.currency, value: 0, cost: 0, gain: 0, percent: null, includedCount: 0 };
     current.value += row.value;
     current.cost += row.cost;
     current.gain += row.unrealizedGain;
     current.percent = current.cost !== 0 ? current.gain / Math.abs(current.cost) * 100 : null;
+    current.includedCount += 1;
     totals.set(row.currency, current);
   });
 
@@ -1708,16 +1728,31 @@ function InvestmentPriceStatusCard({ dateFormat, priceStatus }: { dateFormat: st
 }
 
 function InvestmentApproximateGainCard({ report }: { report: InvestmentReport }) {
+  const excludedCount = report.approximateGainExcludedWithoutCost + report.approximateGainExcludedWithoutPrice;
+
   return (
     <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-4">
       <h3 className="font-semibold text-slate-950">Ganancia no realizada aproximada</h3>
-      <p className="mt-1 text-sm text-slate-600">Solo se calcula para posiciones con costo promedio registrado. Es una estimacion actual, no rendimiento historico real.</p>
+      <p className="mt-1 text-sm text-slate-600">
+        Estimacion basada en posiciones actuales con costo promedio registrado. No incluye ventas realizadas, dividendos, impuestos ni historial por lote.
+      </p>
+
+      <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
+        <PriceMetric label="Posiciones incluidas" value={report.approximateGainRows.length} />
+        <PriceMetric label="Sin costo promedio" value={report.approximateGainExcludedWithoutCost} />
+        <PriceMetric label="Sin precio actual" value={report.approximateGainExcludedWithoutPrice} />
+      </div>
 
       {report.approximateGainTotals.length > 0 ? (
-        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-2">
+        <div className="mt-4 grid min-w-0 gap-2 lg:grid-cols-2">
           {report.approximateGainTotals.map((row) => (
             <div className="min-w-0 rounded-md bg-white p-3" key={row.currency}>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{row.currency}</p>
+              <div className="flex min-w-0 items-start justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{row.currency}</p>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                  {row.includedCount} posicion{row.includedCount === 1 ? "" : "es"}
+                </span>
+              </div>
               <p className={`mt-1 text-lg font-bold ${row.gain >= 0 ? "text-emerald-700" : "text-red-700"}`}>
                 <MoneyAmount amount={row.gain} currency={row.currency} />
               </p>
@@ -1730,7 +1765,8 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
         </div>
       ) : null}
 
-      <div className="mt-4 max-w-full overflow-x-auto">
+      {report.approximateGainRows.length > 0 ? (
+        <div className="mt-4 max-w-full overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-slate-500">
@@ -1738,7 +1774,7 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
               <th className="py-2 pr-4 font-medium">Plataforma</th>
               <th className="py-2 pr-4 text-right font-medium">Valor</th>
               <th className="py-2 pr-4 text-right font-medium">Costo aprox.</th>
-              <th className="py-2 text-right font-medium">Ganancia aprox.</th>
+              <th className="py-2 text-right font-medium">Ganancia/perdida</th>
             </tr>
           </thead>
           <tbody>
@@ -1759,8 +1795,14 @@ function InvestmentApproximateGainCard({ report }: { report: InvestmentReport })
             ))}
           </tbody>
         </table>
-      </div>
-      {report.approximateGainRows.length === 0 ? <EmptyMessage text="No hay posiciones con costo promedio para calcular ganancia aproximada." /> : null}
+        </div>
+      ) : null}
+      {report.approximateGainRows.length === 0 ? <EmptyMessage text="Agrega costo promedio en tus posiciones para ver ganancia/perdida aproximada." /> : null}
+      {excludedCount > 0 ? (
+        <p className="mt-3 rounded-md bg-amber-50 p-3 text-xs text-amber-800">
+          {excludedCount} posicion{excludedCount === 1 ? "" : "es"} no se incluyeron en este calculo por falta de costo promedio valido o precio actual.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -2347,6 +2389,11 @@ function formatQuantity(value: number) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 8,
   });
+}
+
+function getFiniteNumber(value: unknown) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
 }
 
 function formatExchangeRateValue(value: number) {
